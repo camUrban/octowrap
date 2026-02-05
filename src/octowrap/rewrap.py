@@ -225,9 +225,9 @@ def show_block_diff(
     if original_lines == new_lines:
         return False
 
-    print(
-        f"\n{colorize(f'Lines {start_line + 1}-{start_line + len(original_lines)}:', 'bold')}"
-    )
+    end = start_line + len(original_lines)
+    header = colorize(f"Lines {start_line + 1}-{end}:", "bold")
+    print(f"\n{header}")
     print(colorize("─" * 60, "cyan"))
 
     for line in original_lines:
@@ -248,7 +248,9 @@ def prompt_user() -> str:
         try:
             response = (
                 input(
-                    f"[{colorize('a', 'green')}]ccept / [{colorize('s', 'yellow')}]kip / [{colorize('q', 'red')}]uit? "
+                    f"[{colorize('a', 'green')}]ccept / "
+                    f"[{colorize('s', 'yellow')}]kip / "
+                    f"[{colorize('q', 'red')}]uit? "
                 )
                 .strip()
                 .lower()

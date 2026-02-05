@@ -1,7 +1,11 @@
 import pytest
 
-from octowrap.rewrap import (is_divider, is_likely_code, is_list_item,
-                             should_preserve_line)
+from octowrap.rewrap import (
+    is_divider,
+    is_likely_code,
+    is_list_item,
+    should_preserve_line,
+)
 
 
 class TestIsLikelyCode:
