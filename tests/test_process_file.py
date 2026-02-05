@@ -1,8 +1,12 @@
 from octowrap.rewrap import process_file
 
+# fmt: off
 WRAPPABLE_CONTENT = (
-    b"# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+    b"# This is a comment that was wrapped\n"
+    b"# at a short width previously.\n"
+    b"x = 1\n"
 )
+# fmt: on
 
 
 class TestProcessFile:
