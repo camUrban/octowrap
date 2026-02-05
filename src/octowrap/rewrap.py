@@ -10,6 +10,7 @@ level and rewraps them using textwrap. It preserves:
 """
 
 import argparse
+import difflib
 import re
 import textwrap
 from pathlib import Path
@@ -393,8 +394,6 @@ def main():
                 changed_count += 1
                 if args.diff:
                     assert type(original) is str
-
-                    import difflib
 
                     diff = difflib.unified_diff(
                         original.splitlines(keepends=True),
