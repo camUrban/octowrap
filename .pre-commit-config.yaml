@@ -8,3 +8,12 @@ repos:
       args: [--fix, --extend-select, I]
     # Run the formatter.
     - id: ruff-format
+- repo: local
+  hooks:
+    # No official hook yet (https://github.com/astral-sh/ty/issues/269).
+    - id: ty
+      name: ty check
+      entry: ty check .
+      language: system
+      pass_filenames: false
+      always_run: true
