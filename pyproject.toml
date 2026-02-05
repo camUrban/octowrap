@@ -26,6 +26,7 @@ classifiers = [
 dev = [
     "pre-commit>=4.5.1",
     "pytest>=9.0.0",
+    "pytest-cov>=6.0.0",
     "ruff>=0.15.0",
     "ty>=0.0.15",
 ]
@@ -35,6 +36,18 @@ octowrap = "octowrap.cli:main"
 
 [project.urls]
 Repository = "https://github.com/camUrban/octowrap"
+
+[tool.pytest.ini_options]
+addopts = "--cov=octowrap --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["octowrap"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == .__main__.",
+    "pragma: no cover",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
