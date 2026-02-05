@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "octowrap"
+version = "0.1.0"
+description = "Rewrap Python # comments to a specified line length"
+requires-python = ">=3.10"
+dependencies = []
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Cameron Urban" }
+]
+keywords = ["formatting", "comments", "refactoring"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "pytest>=9.0.0",
+    "ruff>=0.15.0",
+    "ty>=0.0.15",
+]
+
+[project.scripts]
+octowrap = "octowrap.cli:main"
+
+[project.urls]
+Repository = "https://github.com/camUrban/octowrap"
+
+[tool.setuptools.packages.find]
+where = ["src"]

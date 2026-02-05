@@ -1,0 +1,108 @@
+# ============================= Python .gitignore template =============================
+# Adapted from: https://github.com/github/gitignore/blob/main/Python.gitignore
+
+# Byte compiled/optimized/DLL files:
+__pycache__/
+*.py[codz]
+*$py.class
+
+# C extensions:
+*.so
+
+# Distribution/packaging:
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller:
+*.manifest
+*.spec
+
+# Installer logs:
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test/coverage reports:
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Jupyter Notebook:
+.ipynb_checkpoints
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm:
+__pypackages__/
+
+# Environments:
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Ruff stuff:
+.ruff_cache/
+
+# PyPI configuration file:
+.pypirc
+
+# =========================== JetBrains .gitignore template ============================
+# Adapted from: https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+
+# User specific stuff:
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries/*
+!.idea/**/dictionaries/project.xml
+.idea/**/shelf
+
+# Generated files:
+.idea/**/contentModel.xml
+
+# Sensitive or high churn files:
+.idea/**/dataSources/
+.idea/**/dataSources.ids
+.idea/**/dataSources.local.xml
+.idea/**/sqlDataSources.xml
+.idea/**/dynamic.xml
+.idea/**/uiDesigner.xml
+.idea/**/dbnavigator.xml
+
+# CMake:
+cmake-build-*/
+
+# File based project format:
+*.iws
+
+# Github Copilot persisted session migrations, see:
+# https://github.com/microsoft/copilot-intellij-feedback/issues/712#issuecomment-3322062215
+.idea/**/copilot.data.migration.*.xml
