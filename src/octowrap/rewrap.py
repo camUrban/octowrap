@@ -157,7 +157,9 @@ def rewrap_comment_block(
         if match:
             contents.append(match.group(1))
         else:
-            contents.append("")
+            # Defensive: parse_comment_blocks only yields # lines, so
+            # the regex above will always match.
+            contents.append("")  # pragma: no cover
 
     # Group into paragraphs (separated by blank comment lines or preserved lines)
     paragraphs = []
@@ -192,7 +194,9 @@ def rewrap_comment_block(
                 if content:
                     result.append(prefix + content)
                 else:
-                    result.append(indent + "#")
+                    # Defensive: preserved lines always have non empty
+                    # content since blank lines are handled above.
+                    result.append(indent + "#")  # pragma: no cover
         else:  # wrap
             text = " ".join(para_contents)
             wrapped = textwrap.fill(text, width=text_width)
