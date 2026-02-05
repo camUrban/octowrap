@@ -270,7 +270,8 @@ def process_file(
 
     Returns (changed, new_content).
     """
-    content = filepath.read_text()
+    with open(filepath, newline="") as f:
+        content = f.read()
     lines = content.splitlines(keepends=True)
 
     # Normalize line endings for processing
@@ -324,7 +325,8 @@ def process_file(
     changed = new_content != content
 
     if changed and not dry_run:
-        filepath.write_text(new_content)
+        with open(filepath, "w", newline="") as f:
+            f.write(new_content)
 
     return changed, new_content
 
