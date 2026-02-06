@@ -4,6 +4,7 @@ from octowrap.rewrap import (
     is_divider,
     is_likely_code,
     is_list_item,
+    is_tool_directive,
     should_preserve_line,
 )
 
@@ -160,6 +161,73 @@ class TestIsListItem:
         assert not is_list_item(text)
 
 
+class TestIsToolDirective:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "type: ignore",
+            "type: ignore[assignment]",
+            "type: int",
+            "noqa",
+            "noqa: E501",
+            "noqa: E501,W503",
+            "pragma: no cover",
+            "pragma: no branch",
+            "fmt: off",
+            "fmt: on",
+            "fmt: skip",
+            "isort: skip",
+            "isort: skip_file",
+            "isort: split",
+            "pylint: disable=C0114",
+            "pylint: enable=C0114",
+            "mypy: ignore-errors",
+            "mypy: disable-error-code",
+            "pyright: reportGeneralTypeIssues=false",
+            "ruff: noqa: F401",
+        ],
+        ids=[
+            "type_ignore",
+            "type_ignore_code",
+            "type_int",
+            "noqa",
+            "noqa_code",
+            "noqa_multi",
+            "pragma_no_cover",
+            "pragma_no_branch",
+            "fmt_off",
+            "fmt_on",
+            "fmt_skip",
+            "isort_skip",
+            "isort_skip_file",
+            "isort_split",
+            "pylint_disable",
+            "pylint_enable",
+            "mypy_ignore",
+            "mypy_disable",
+            "pyright_report",
+            "ruff_noqa",
+        ],
+    )
+    def test_detects_directives(self, text):
+        assert is_tool_directive(text)
+
+    # fmt: off
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "This is a regular comment.",
+            "The type is important here.",
+            "Use fmt to format the code.",
+            "",
+        ],
+        ids=["prose", "contains_type", "contains_fmt", "empty"],
+    )
+    # fmt: on
+    def test_rejects_non_directives(self, text):
+        assert not is_tool_directive(text)
+
+
 class TestShouldPreserveLine:
     def test_blank_line(self):
         assert should_preserve_line("")
@@ -178,3 +246,8 @@ class TestShouldPreserveLine:
         """should_preserve_line does NOT check is_list_item; that's handled
         separately in rewrap_comment_block."""
         assert not should_preserve_line("- item one")
+
+    def test_tool_directive_not_preserved(self):
+        """should_preserve_line does NOT check is_tool_directive; that's handled
+        separately in rewrap_comment_block."""
+        assert not should_preserve_line("type: ignore")

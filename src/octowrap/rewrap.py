@@ -116,6 +116,24 @@ def is_list_item(text: str) -> bool:
     return any(re.match(p, text) for p in list_patterns)
 
 
+def is_tool_directive(text: str) -> bool:
+    """Check if a comment line is a tool directive (type: ignore, noqa, fmt: off, etc.)."""
+    directive_patterns = [
+        r"type:\s*ignore",  # mypy/pyright inline suppression
+        r"noqa(\s*:\s*\S+)?$",  # flake8/ruff lint suppression
+        r"pragma:\s*no\s+(cover|branch)",  # coverage.py
+        r"fmt:\s*(off|on|skip)",  # black/ruff formatter
+        r"isort:\s*(skip|skip_file|split)",  # isort
+        r"pylint:\s*(disable|enable)",  # pylint
+        r"mypy:\s*\S",  # mypy config comments
+        r"pyright:\s*\S",  # pyright config comments
+        r"ruff:\s*noqa",  # ruff-specific suppression
+        r"type:\s*\S+",  # PEP 484 type comments (e.g. type: int)
+    ]
+    stripped = text.strip()
+    return any(re.match(p, stripped) for p in directive_patterns)
+
+
 def should_preserve_line(text: str) -> bool:
     """Determine if a comment line should be preserved as is."""
     if not text.strip():
@@ -225,7 +243,11 @@ def rewrap_comment_block(
                 paragraphs.append(("wrap", current_para))
                 current_para = []
             paragraphs.append(("blank", [""]))
-        elif should_preserve_line(content) or is_list_item(content):
+        elif (
+            should_preserve_line(content)
+            or is_list_item(content)
+            or is_tool_directive(content)
+        ):
             # Preserve this line as is
             if current_para:
                 paragraphs.append(("wrap", current_para))

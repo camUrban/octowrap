@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-octowrap is a Python CLI tool that rewraps Python `#` comments to a specified line length. It intelligently reformats comment blocks while preserving commented-out code, section dividers, list items, and special markers (TODO, FIXME, NOTE, XXX, HACK).
+octowrap is a Python CLI tool that rewraps Python `#` comments to a specified line length. It intelligently reformats comment blocks while preserving commented-out code, section dividers, list items, special markers (TODO, FIXME, NOTE, XXX, HACK), and tool directives (type: ignore, noqa, fmt: off, pragma: no cover, etc.).
 
 ## Commands
 
@@ -43,6 +43,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
    - `is_likely_code()` — 21 patterns detecting commented-out Python code
    - `is_divider()` — repeated-character separator lines
    - `is_list_item()` — bullets, numbered items, special markers
+   - `is_tool_directive()` — tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, PEP 484 type comments)
 8. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
 9. **Output** — interactive per-block approval (`a` accept, `A` accept all, `s` skip, `q` quit) with colorized diffs, or batch mode
 

@@ -1,6 +1,6 @@
 # octowrap
 
-A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, list items, and special markers.
+A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, list items, special markers, and tool directives.
 
 ## Features
 
@@ -9,6 +9,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves section dividers (`# --------`, `# ========`, etc.)
 - Preserves list items (bullets, numbered items)
 - Preserves special markers (`TODO`, `FIXME`, `NOTE`, `XXX`, `HACK`)
+- Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
 - Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs (`a` accept, `A` accept all, `s` skip, `q` quit)
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)

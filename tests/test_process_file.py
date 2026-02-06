@@ -191,6 +191,53 @@ class TestProcessFileInteractive:
         assert not called
 
 
+class TestToolDirectivePreservation:
+    """Integration tests for tool directive preservation during rewrapping."""
+
+    def test_directive_preserved_in_block(self):
+        """A tool directive embedded in a comment block is preserved on its own line."""
+        # fmt: off
+        content = (
+            "# This is a long comment that should be rewrapped because it exceeds the line length limit set for this file.\n"
+            "# fmt: off\n"
+            "# This is another long comment that should also be rewrapped to the correct line length for the file.\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        # The directive must appear on its own line
+        result_lines = result.splitlines()
+        assert "# fmt: off" in result_lines
+        # Surrounding prose should be rewrapped (not preserved verbatim)
+        assert any("exceeds the line length" in line for line in result_lines)
+
+    def test_noqa_directive_preserved(self):
+        """A noqa directive stays on its own line."""
+        # fmt: off
+        content = (
+            "# This is a long comment that should be rewrapped because it exceeds the configured maximum line length.\n"
+            "# noqa: E501\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        result_lines = result.splitlines()
+        assert "# noqa: E501" in result_lines
+
+    def test_type_ignore_directive_preserved(self):
+        """A type: ignore directive stays on its own line."""
+        # fmt: off
+        content = (
+            "# This is a long comment that should be rewrapped because it exceeds the configured maximum line length.\n"
+            "# type: ignore[assignment]\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        result_lines = result.splitlines()
+        assert "# type: ignore[assignment]" in result_lines
+
+
 class TestPragma:
     """Tests for # octowrap: off/on pragma directives."""
 
