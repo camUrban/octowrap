@@ -86,7 +86,7 @@ class TestMain:
         assert "not found, skipping" in out
 
     def test_directory_non_recursive(self, tmp_path, monkeypatch, capsys):
-        """With --no-recursive, only top-level .py files are processed."""
+        """With --no-recursive, only top level .py files are processed."""
         (tmp_path / "top.py").write_bytes(WRAPPABLE_CONTENT)
         sub = tmp_path / "sub"
         sub.mkdir()
@@ -114,8 +114,6 @@ class TestMain:
         bad = tmp_path / "bad.py"
         bad.write_bytes(WRAPPABLE_CONTENT)
 
-        import octowrap.rewrap as mod
-
         real_process_file = mod.process_file
 
         def failing_process_file(filepath, *args, **kwargs):
@@ -135,7 +133,7 @@ class TestEntryPoints:
     """Tests that exercise __main__.py and cli.py entry points."""
 
     def test_dunder_main(self, tmp_path, monkeypatch, capsys):
-        """Running via python -m octowrap exercises __main__.py in-process."""
+        """Running via python -m octowrap exercises __main__.py in process."""
         f = tmp_path / "a.py"
         f.write_bytes(b"x = 1\n")
         monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
@@ -144,7 +142,7 @@ class TestEntryPoints:
         assert "0 file(s) reformatted." in out
 
     def test_console_script(self, tmp_path):
-        """The installed 'octowrap' console script works end-to-end."""
+        """The installed 'octowrap' console script works end to end."""
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         result = subprocess.run(
@@ -256,7 +254,7 @@ class TestConfigIntegration:
         extra_dir = tmp_path / "extra"
         extra_dir.mkdir()
         (extra_dir / "b.py").write_bytes(WRAPPABLE_CONTENT)
-        # top-level file should be processed
+        # top level file should be processed
         (tmp_path / "c.py").write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
@@ -269,7 +267,7 @@ class TestCheckMode:
     """Tests for the --check flag."""
 
     def test_check_exits_zero_when_clean(self, tmp_path, monkeypatch, capsys):
-        """No changes needed → exit 0."""
+        """No changes needed -> exit 0."""
         f = tmp_path / "a.py"
         f.write_bytes(b"x = 1\n")
         monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
@@ -278,7 +276,7 @@ class TestCheckMode:
         assert "0 file(s) would be reformatted." in out
 
     def test_check_exits_one_when_dirty(self, tmp_path, monkeypatch, capsys):
-        """Changes needed → exit 1."""
+        """Changes needed -> exit 1."""
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
@@ -310,7 +308,7 @@ class TestDefaultExcludes:
     """Tests for default directory exclusion."""
 
     def test_default_excludes_skip_venv(self, tmp_path, monkeypatch, capsys):
-        """.venv/ is auto-skipped by default excludes."""
+        """.venv/ is auto skipped by default excludes."""
         venv_dir = tmp_path / ".venv"
         venv_dir.mkdir()
         (venv_dir / "a.py").write_bytes(WRAPPABLE_CONTENT)
@@ -321,7 +319,7 @@ class TestDefaultExcludes:
         assert "1 file(s) reformatted." in out
 
     def test_default_excludes_skip_pycache(self, tmp_path, monkeypatch, capsys):
-        """__pycache__/ is auto-skipped by default excludes."""
+        """__pycache__/ is auto skipped by default excludes."""
         cache_dir = tmp_path / "__pycache__"
         cache_dir.mkdir()
         (cache_dir / "a.py").write_bytes(WRAPPABLE_CONTENT)
@@ -344,7 +342,7 @@ class TestDefaultExcludes:
 
 
 class TestColorFlags:
-    """Tests for --color / --no-color / auto-detect."""
+    """Tests for --color/--no-color/auto detect."""
 
     def test_force_color_on(self, tmp_path, monkeypatch, capsys):
         """--color forces _USE_COLOR to True regardless of TTY."""

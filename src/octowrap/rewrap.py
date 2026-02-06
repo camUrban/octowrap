@@ -1,7 +1,7 @@
 """Rewrap # comments to a specified line width.
 
-This script identifies contiguous blocks of # comments at the same indentation
-level and rewraps them using textwrap. It preserves:
+This script identifies contiguous blocks of # comments at the same indentation level and
+rewraps them using textwrap. It preserves:
 - Commented out code (heuristic detection)
 - Section dividers (lines of repeated characters like # ---- or # ====)
 - Inline comments (# after code on the same line)
@@ -19,6 +19,15 @@ import textwrap
 from pathlib import Path
 
 from octowrap.config import ConfigError, load_config
+
+# Platform specific imports for single keypress input (_getch). msvcrt is Windows only;
+# termios/tty are Unix only. The type: ignore comments suppress errors from type
+# checkers that cannot resolve modules only available on the other platform.
+if sys.platform == "win32":  # pragma: no cover
+    import msvcrt  # noqa: F401
+else:  # pragma: no cover
+    import termios  # noqa: F401
+    import tty  # noqa: F401
 
 DEFAULT_EXCLUDES: list[str] = [
     ".git",
@@ -283,24 +292,47 @@ def show_block_diff(
     return True
 
 
+def _getch() -> str:
+    """Read a single character without waiting for Enter.
+
+    Uses platform specific APIs (msvcrt on Windows, termios/tty on Unix),
+    imported conditionally at module level.
+    """
+    if sys.platform == "win32":
+        return msvcrt.getwch()
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)  # type: ignore[possibly-unbound]
+    try:
+        tty.setcbreak(fd)  # type: ignore[possibly-unbound]
+        return sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)  # type: ignore[possibly-unbound]
+
+
 def prompt_user() -> str:
     """Prompt user for action on a block.
 
     Returns: 'a' (accept), 'A' (accept all), 's' (skip), or 'q' (quit)
     """
+    prompt = (
+        f"[{colorize('a', 'green')}]ccept / "
+        f"accept [{colorize('A', 'green')}]ll / "
+        f"[{colorize('s', 'yellow')}]kip / "
+        f"[{colorize('q', 'red')}]uit? "
+    )
     while True:
         try:
-            response = input(
-                f"[{colorize('a', 'green')}]ccept / "
-                f"accept [{colorize('A', 'green')}]ll / "
-                f"[{colorize('s', 'yellow')}]kip / "
-                f"[{colorize('q', 'red')}]uit? "
-            ).strip()
-            if response in ("A",):
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            ch = _getch()
+            sys.stdout.write(ch + "\n")
+            sys.stdout.flush()
+            if ch == "A":
                 return "A"
-            response = response.lower()
-            if response in ("a", "s", "q", ""):
-                return response if response else "s"  # default to skip on empty
+            ch = ch.lower()
+            if ch in ("a", "s", "q"):
+                return ch
         except (EOFError, KeyboardInterrupt):
             print()
             return "q"
@@ -414,7 +446,7 @@ def main():
         "--no-recursive",
         action="store_true",
         default=None,
-        help="Only process top-level .py files in directories",
+        help="Only process top level .py files in directories",
     )
     parser.add_argument(
         "-i",
@@ -440,7 +472,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Resolve color setting: --color → on, --no-color → off, neither → auto-detect.
+    # Resolve color setting: --color -> on, --no-color -> off, neither -> auto detect.
     global _USE_COLOR
     if args.color is None:
         _USE_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ

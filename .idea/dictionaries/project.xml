@@ -2,8 +2,18 @@
   <dictionary name="project">
     <words>
       <w>ccept</w>
+      <w>fileno</w>
+      <w>getwch</w>
+      <w>isatty</w>
+      <w>mhello</w>
+      <w>mtitle</w>
       <w>octowrap</w>
       <w>rewrappable</w>
+      <w>skipif</w>
+      <w>tcgetattr</w>
+      <w>tcsadrain</w>
+      <w>tcsetattr</w>
+      <w>termios</w>
     </words>
   </dictionary>
 </component>
