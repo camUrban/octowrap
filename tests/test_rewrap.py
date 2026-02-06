@@ -1,6 +1,6 @@
 from conftest import make_block
 
-from octowrap.rewrap import rewrap_comment_block
+from octowrap.rewrap import parse_pragma, rewrap_comment_block
 
 
 def test_short_line_unchanged():
@@ -184,3 +184,38 @@ class TestRewrapToWiderLength:
             "# But this part should also be rewrapped to the wider target length now."
             in result
         )
+
+
+class TestParsePragma:
+    def test_parse_pragma_off(self):
+        assert parse_pragma("# octowrap: off") == "off"
+
+    def test_parse_pragma_on(self):
+        assert parse_pragma("# octowrap: on") == "on"
+
+    def test_parse_pragma_none_for_regular_comment(self):
+        assert parse_pragma("# This is a regular comment.") is None
+
+    def test_parse_pragma_none_for_code(self):
+        assert parse_pragma("x = 1") is None
+
+    def test_parse_pragma_case_insensitive(self):
+        assert parse_pragma("# OCTOWRAP: OFF") == "off"
+        assert parse_pragma("# Octowrap: On") == "on"
+        assert parse_pragma("# OcToWrAp: oFf") == "off"
+
+    def test_parse_pragma_with_extra_whitespace(self):
+        assert parse_pragma("#  octowrap:  off  ") == "off"
+        assert parse_pragma("#   octowrap:   on   ") == "on"
+
+    def test_parse_pragma_with_leading_indent(self):
+        assert parse_pragma("    # octowrap: off") == "off"
+        assert parse_pragma("        # octowrap: on") == "on"
+
+    def test_parse_pragma_none_for_partial_match(self):
+        assert parse_pragma("# octowrap: maybe") is None
+        assert parse_pragma("# octowrap:") is None
+
+    def test_parse_pragma_none_for_inline(self):
+        """Inline pragma after code should not match (not a standalone comment)."""
+        assert parse_pragma("x = 1  # octowrap: off") is None

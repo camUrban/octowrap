@@ -127,6 +127,15 @@ def should_preserve_line(text: str) -> bool:
     return False
 
 
+def parse_pragma(line: str) -> str | None:
+    """Check if a raw source line is an octowrap pragma.
+
+    Returns "off", "on", or None.
+    """
+    match = re.match(r"^\s*#\s*octowrap:\s*(off|on)\s*$", line, re.IGNORECASE)
+    return match.group(1).lower() if match else None
+
+
 def parse_comment_blocks(lines: list[str]) -> list[dict]:
     """Parse file lines into code sections and comment blocks.
 
@@ -357,41 +366,92 @@ def process_content(
     new_lines = []
     user_quit = False
     accept_all = False
+    disabled = False
 
     for block in blocks:
         if block["type"] == "code":
             new_lines.extend(block["lines"])
-        else:
-            rewrapped = rewrap_comment_block(block, max_line_length)
+            continue
 
-            if not interactive:
-                # Non interactive: just apply all changes
-                new_lines.extend(rewrapped)
-            elif accept_all:
-                new_lines.extend(rewrapped)
-            else:
-                # Interactive mode
-                has_changes = show_block_diff(
-                    block["lines"], rewrapped, block["start_idx"]
-                )
+        # Check if this block contains any pragma directives
+        has_pragma = any(parse_pragma(bline) is not None for bline in block["lines"])
 
-                if has_changes and not user_quit:
-                    action = prompt_user()
+        if has_pragma:
+            # Split the block into sub blocks at pragma boundaries, processing
+            # each segment according to the current disabled state.
+            segment_lines: list[str] = []
+            segment_start = block["start_idx"]
 
-                    if action == "A":
-                        accept_all = True
-                        new_lines.extend(rewrapped)
-                    elif action == "a":
-                        new_lines.extend(rewrapped)
-                    elif action == "q":
-                        user_quit = True
-                        new_lines.extend(block["lines"])  # keep original
-                    else:  # skip
-                        new_lines.extend(block["lines"])  # keep original
+            for bline in block["lines"]:
+                p = parse_pragma(bline)
+                if p is not None:
+                    # Process accumulated segment before this pragma.
+                    if segment_lines:
+                        sub = {
+                            "type": "comment_block",
+                            "lines": segment_lines,
+                            "indent": block["indent"],
+                            "start_idx": segment_start,
+                        }
+                        if disabled:
+                            new_lines.extend(segment_lines)
+                        else:
+                            new_lines.extend(rewrap_comment_block(sub, max_line_length))
+                        segment_start += len(segment_lines)
+                        segment_lines = []
+                    # Preserve the pragma line itself and update state.
+                    new_lines.append(bline)
+                    disabled = p == "off"
+                    segment_start += 1
                 else:
-                    new_lines.extend(block["lines"])
+                    segment_lines.append(bline)
 
-    # Restore original line ending style
+            # Process any remaining segment after the last pragma.
+            if segment_lines:
+                sub = {
+                    "type": "comment_block",
+                    "lines": segment_lines,
+                    "indent": block["indent"],
+                    "start_idx": segment_start,
+                }
+                if disabled:
+                    new_lines.extend(segment_lines)
+                else:
+                    new_lines.extend(rewrap_comment_block(sub, max_line_length))
+            continue
+
+        if disabled:
+            # Rewrapping is suppressed, so preserve as is.
+            new_lines.extend(block["lines"])
+            continue
+
+        # Use the normal rewrap logic.
+        rewrapped = rewrap_comment_block(block, max_line_length)
+
+        if not interactive:
+            new_lines.extend(rewrapped)
+        elif accept_all:
+            new_lines.extend(rewrapped)
+        else:
+            has_changes = show_block_diff(block["lines"], rewrapped, block["start_idx"])
+
+            if has_changes and not user_quit:
+                action = prompt_user()
+
+                if action == "A":
+                    accept_all = True
+                    new_lines.extend(rewrapped)
+                elif action == "a":
+                    new_lines.extend(rewrapped)
+                elif action == "q":
+                    user_quit = True
+                    new_lines.extend(block["lines"])
+                else:  # skip
+                    new_lines.extend(block["lines"])
+            else:
+                new_lines.extend(block["lines"])
+
+    # Restore the original line ending style.
     if lines and lines[0].endswith("\r\n"):
         ending = "\r\n"
     elif lines and lines[0].endswith("\r"):

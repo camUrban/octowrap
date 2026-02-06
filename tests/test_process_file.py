@@ -10,7 +10,7 @@ WRAPPABLE_CONTENT = (
 
 
 class TestProcessContent:
-    """Tests for the process_content() pure-transformation function."""
+    """Tests for the process_content() pure transformation function."""
 
     def test_basic_rewrap(self):
         """Wrappable content returns changed=True with joined comment."""
@@ -137,7 +137,7 @@ class TestProcessFileInteractive:
     def test_accept_all_applies_remaining(self, tmp_path, monkeypatch):
         """Accept-all applies rewrapped content to all subsequent blocks."""
         f = tmp_path / "t.py"
-        # fmt: on
+        # fmt: off
         f.write_bytes(
             b"# First block that was wrapped\n"
             b"# at a short width.\n"
@@ -145,7 +145,7 @@ class TestProcessFileInteractive:
             b"# Second block that was also wrapped\n"
             b"# at a short width.\n"
         )
-        # fmt: off
+        # fmt: on
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "A")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
@@ -155,7 +155,7 @@ class TestProcessFileInteractive:
     def test_accept_all_skips_prompting(self, tmp_path, monkeypatch):
         """After accept-all, prompt_user is not called for subsequent blocks."""
         f = tmp_path / "t.py"
-        # fmt: on
+        # fmt: off
         f.write_bytes(
             b"# First block that was wrapped\n"
             b"# at a short width.\n"
@@ -163,7 +163,7 @@ class TestProcessFileInteractive:
             b"# Second block that was also wrapped\n"
             b"# at a short width.\n"
         )
-        # fmt: off
+        # fmt: on
         call_count = 0
 
         def counting_prompt():
@@ -188,4 +188,136 @@ class TestProcessFileInteractive:
 
         monkeypatch.setattr("octowrap.rewrap.prompt_user", should_not_be_called)
         process_file(f, max_line_length=88, interactive=True)
+        assert not called
+
+
+class TestPragma:
+    """Tests for # octowrap: off/on pragma directives."""
+
+    def test_pragma_off_preserves_block(self):
+        content = (
+            "# octowrap: off\n"
+            "# This is a comment that was wrapped\n"
+            "# at a short width previously.\n"
+            "x = 1\n"
+        )
+        changed, result = process_content(content, max_line_length=88)
+        assert not changed
+        assert result == content
+
+    def test_pragma_on_resumes_wrapping(self):
+        # fmt: off
+        content = (
+            "# octowrap: off\n"
+            "# This is a comment that was wrapped\n"
+            "# at a short width previously.\n"
+            "# octowrap: on\n"
+            "# This is another comment that was wrapped\n"
+            "# at a short width previously.\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        # Protected block preserved
+        assert "# This is a comment that was wrapped\n" in result
+        assert "# at a short width previously.\n" in result
+        # Re enabled block rewrapped
+        assert (
+            "# This is another comment that was wrapped at a short width previously."
+            in result
+        )
+
+    def test_pragma_off_on_sandwich(self):
+        # fmt: off
+        content = (
+            "# This top comment was wrapped\n"
+            "# at a short width previously.\n"
+            "# octowrap: off\n"
+            "# This middle comment was wrapped\n"
+            "# at a short width previously.\n"
+            "# octowrap: on\n"
+            "# This bottom comment was wrapped\n"
+            "# at a short width previously.\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        # Top block rewrapped
+        assert "# This top comment was wrapped at a short width previously." in result
+        # Middle block preserved
+        assert "# This middle comment was wrapped\n" in result
+        # Bottom block rewrapped
+        assert (
+            "# This bottom comment was wrapped at a short width previously." in result
+        )
+
+    def test_pragma_case_insensitive(self):
+        # fmt: off
+        content = (
+            "# OCTOWRAP: OFF\n"
+            "# This is a comment that was wrapped\n"
+            "# at a short width previously.\n"
+            "# Octowrap: On\n"
+            "# Another comment that was wrapped\n"
+            "# at a short width previously.\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        # Protected block preserved
+        assert "# This is a comment that was wrapped\n" in result
+        # Re enabled block rewrapped
+        assert (
+            "# Another comment that was wrapped at a short width previously." in result
+        )
+
+    def test_pragma_with_extra_whitespace(self):
+        # fmt: off
+        content = (
+            "#  octowrap:  off\n"
+            "# This is a comment that was wrapped\n"
+            "# at a short width previously.\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert not changed
+
+    def test_pragma_block_itself_preserved(self):
+        content = "# octowrap: off\nx = 1\n"
+        changed, result = process_content(content, max_line_length=88)
+        assert "# octowrap: off" in result
+
+    def test_pragma_off_without_on(self):
+        # fmt: off
+        content = (
+            "# octowrap: off\n"
+            "# First block that was wrapped\n"
+            "# at a short width previously.\n"
+            "x = 1\n"
+            "# Second block that was wrapped\n"
+            "# at a short width previously.\n"
+        )
+        # fmt: on
+        changed, result = process_content(content, max_line_length=88)
+        assert not changed
+        assert result == content
+
+    def test_pragma_interactive_mode(self, monkeypatch):
+        """Pragmas are respected even in interactive mode, so there's no prompt for
+        disabled blocks."""
+        content = (
+            "# octowrap: off\n"
+            "# This is a comment that was wrapped\n"
+            "# at a short width previously.\n"
+        )
+        called = False
+
+        def should_not_be_called():
+            nonlocal called
+            called = True
+            return "a"
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", should_not_be_called)
+        changed, result = process_content(content, max_line_length=88, interactive=True)
+        assert not changed
         assert not called

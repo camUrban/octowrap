@@ -9,6 +9,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves section dividers (`# --------`, `# ========`, etc.)
 - Preserves list items (bullets, numbered items)
 - Preserves special markers (`TODO`, `FIXME`, `NOTE`, `XXX`, `HACK`)
+- Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
 - Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs (`a` accept, `A` accept all, `s` skip, `q` quit)
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
@@ -56,6 +57,25 @@ After (`--line-length 88`):
 # length and really should be wrapped to fit within a reasonable number of
 # columns.
 ```
+
+## Disabling Rewrapping
+
+Use pragma comments to protect regions of a file from rewrapping, similar to `# fmt: off/on` in black/ruff:
+
+```python
+# octowrap: off
+# This comment will not be rewrapped,
+# no matter how long or short
+# the lines are.
+# octowrap: on
+
+# This comment will be rewrapped normally.
+```
+
+- Directives are case-insensitive (`# OCTOWRAP: OFF` works)
+- Must be a standalone comment line (inline `x = 1  # octowrap: off` is ignored)
+- `# octowrap: off` without a matching `on` disables rewrapping through end of file
+- Pragma lines themselves are always preserved as-is
 
 ## Pre-commit Hook
 

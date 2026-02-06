@@ -38,12 +38,13 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 3. **Stdin mode** — when `-` is passed as the sole path, reads from stdin, rewraps via `process_content()`, and writes to stdout. Supports `--diff`, `--check`, and `-l`. Cannot be mixed with other paths or `-i`.
 4. **File discovery** — walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
 5. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
-6. **Preservation checks** — each comment is tested against heuristics:
+6. **Pragma handling** — `parse_pragma()` detects `# octowrap: off` / `# octowrap: on` directives (case-insensitive). When a block contains pragmas, it's split at pragma boundaries; segments between off/on are preserved as-is. State carries across blocks.
+7. **Preservation checks** — each comment is tested against heuristics:
    - `is_likely_code()` — 21 patterns detecting commented-out Python code
    - `is_divider()` — repeated-character separator lines
    - `is_list_item()` — bullets, numbered items, special markers
-7. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
-8. **Output** — interactive per-block approval (`a` accept, `A` accept all, `s` skip, `q` quit) with colorized diffs, or batch mode
+8. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
+9. **Output** — interactive per-block approval (`a` accept, `A` accept all, `s` skip, `q` quit) with colorized diffs, or batch mode
 
 ### Key functions
 
