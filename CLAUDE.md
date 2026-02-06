@@ -42,7 +42,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
    - `is_divider()` — repeated-character separator lines
    - `is_list_item()` — bullets, numbered items, special markers
 6. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
-7. **Output** — interactive per-block approval with colorized diffs, or batch mode
+7. **Output** — interactive per-block approval (`a` accept, `A` accept all, `s` skip, `q` quit) with colorized diffs, or batch mode
 
 ## Tooling
 

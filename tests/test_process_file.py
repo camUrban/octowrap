@@ -107,6 +107,47 @@ class TestProcessFileInteractive:
         # Both blocks should be unchanged since user quit on the first
         assert not changed
 
+    def test_accept_all_applies_remaining(self, tmp_path, monkeypatch):
+        """Accept-all applies rewrapped content to all subsequent blocks."""
+        f = tmp_path / "t.py"
+        # fmt: on
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: off
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "A")
+        changed, content = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        assert "# First block that was wrapped at a short width." in content
+        assert "# Second block that was also wrapped at a short width." in content
+
+    def test_accept_all_skips_prompting(self, tmp_path, monkeypatch):
+        """After accept-all, prompt_user is not called for subsequent blocks."""
+        f = tmp_path / "t.py"
+        # fmt: on
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: off
+        call_count = 0
+
+        def counting_prompt():
+            nonlocal call_count
+            call_count += 1
+            return "A"
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", counting_prompt)
+        process_file(f, max_line_length=88, interactive=True)
+        assert call_count == 1
+
     def test_no_diff_shown_when_block_unchanged(self, tmp_path, monkeypatch):
         """When a block has no changes, prompt_user should not be called."""
         f = tmp_path / "t.py"

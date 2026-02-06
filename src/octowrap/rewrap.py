@@ -286,19 +286,19 @@ def show_block_diff(
 def prompt_user() -> str:
     """Prompt user for action on a block.
 
-    Returns: 'a' (accept), 's' (skip), or 'q' (quit)
+    Returns: 'a' (accept), 'A' (accept all), 's' (skip), or 'q' (quit)
     """
     while True:
         try:
-            response = (
-                input(
-                    f"[{colorize('a', 'green')}]ccept / "
-                    f"[{colorize('s', 'yellow')}]kip / "
-                    f"[{colorize('q', 'red')}]uit? "
-                )
-                .strip()
-                .lower()
-            )
+            response = input(
+                f"[{colorize('a', 'green')}]ccept / "
+                f"accept [{colorize('A', 'green')}]ll / "
+                f"[{colorize('s', 'yellow')}]kip / "
+                f"[{colorize('q', 'red')}]uit? "
+            ).strip()
+            if response in ("A",):
+                return "A"
+            response = response.lower()
             if response in ("a", "s", "q", ""):
                 return response if response else "s"  # default to skip on empty
         except (EOFError, KeyboardInterrupt):
@@ -327,6 +327,7 @@ def process_file(
 
     new_lines = []
     user_quit = False
+    accept_all = False
 
     for block in blocks:
         if block["type"] == "code":
@@ -337,6 +338,8 @@ def process_file(
             if not interactive or dry_run:
                 # Non interactive: just apply all changes
                 new_lines.extend(rewrapped)
+            elif accept_all:
+                new_lines.extend(rewrapped)
             else:
                 # Interactive mode
                 has_changes = show_block_diff(
@@ -346,7 +349,10 @@ def process_file(
                 if has_changes and not user_quit:
                     action = prompt_user()
 
-                    if action == "a":
+                    if action == "A":
+                        accept_all = True
+                        new_lines.extend(rewrapped)
+                    elif action == "a":
                         new_lines.extend(rewrapped)
                     elif action == "q":
                         user_quit = True

@@ -75,8 +75,12 @@ class TestPromptUser:
         monkeypatch.setattr("builtins.input", lambda _: "")
         assert prompt_user() == "s"
 
-    def test_uppercase_accepted(self, monkeypatch):
+    def test_accept_all(self, monkeypatch):
         monkeypatch.setattr("builtins.input", lambda _: "A")
+        assert prompt_user() == "A"
+
+    def test_lowercase_a_is_single_accept(self, monkeypatch):
+        monkeypatch.setattr("builtins.input", lambda _: "a")
         assert prompt_user() == "a"
 
     def test_invalid_then_valid(self, monkeypatch):

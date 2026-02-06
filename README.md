@@ -9,7 +9,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves section dividers (`# --------`, `# ========`, etc.)
 - Preserves list items (bullets, numbered items)
 - Preserves special markers (`TODO`, `FIXME`, `NOTE`, `XXX`, `HACK`)
-- Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs
+- Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs (`a` accept, `A` accept all, `s` skip, `q` quit)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Project-level configuration via `[tool.octowrap]` in `pyproject.toml`
 
