@@ -96,7 +96,7 @@ class TestProcessFile:
         f.write_bytes(b"# This was wrapped at a very\n# short width before.\n")
         changed, content = process_file(f, max_line_length=88)
         assert changed
-        assert f.read_text(newline="") == content
+        assert f.read_bytes().decode() == content
 
 
 class TestProcessFileInteractive:
