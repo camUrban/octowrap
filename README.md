@@ -19,7 +19,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 ## Development Setup
 
 ```bash
-git clone https://github.com/cameronurban/octowrap.git
+git clone https://github.com/camUrban/octowrap.git
 cd octowrap
 uv pip install -e ".[dev]"
 ```

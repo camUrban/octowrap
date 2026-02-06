@@ -2,6 +2,7 @@
   <dictionary name="project">
     <words>
       <w>bline</w>
+      <w>cacheprovider</w>
       <w>ccept</w>
       <w>fileno</w>
       <w>getwch</w>
