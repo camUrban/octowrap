@@ -1,5 +1,10 @@
 # octowrap
 
+[![CI](https://github.com/camUrban/octowrap/actions/workflows/ci.yml/badge.svg)](https://github.com/camUrban/octowrap/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/octowrap)](https://pypi.org/project/octowrap/)
+[![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
+[![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
+
 A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, list items, special markers, and tool directives.
 
 ## Features
