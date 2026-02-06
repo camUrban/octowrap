@@ -1,4 +1,4 @@
-from octowrap.rewrap import process_file
+from octowrap.rewrap import process_content, process_file
 
 # fmt: off
 WRAPPABLE_CONTENT = (
@@ -7,6 +7,33 @@ WRAPPABLE_CONTENT = (
     b"x = 1\n"
 )
 # fmt: on
+
+
+class TestProcessContent:
+    """Tests for the process_content() pure-transformation function."""
+
+    def test_basic_rewrap(self):
+        """Wrappable content returns changed=True with joined comment."""
+        content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        assert (
+            "# This is a comment that was wrapped at a short width previously."
+            in result
+        )
+
+    def test_unchanged(self):
+        """Clean code returns changed=False with identical content."""
+        content = "x = 1\ny = 2\n"
+        changed, result = process_content(content, max_line_length=88)
+        assert not changed
+        assert result == content
+
+    def test_empty_string(self):
+        """Empty string returns (False, '')."""
+        changed, result = process_content("", max_line_length=88)
+        assert not changed
+        assert result == ""
 
 
 class TestProcessFile:

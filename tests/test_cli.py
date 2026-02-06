@@ -1,3 +1,4 @@
+import io
 import runpy
 import subprocess
 
@@ -474,3 +475,94 @@ class TestColorFlags:
         monkeypatch.setattr("sys.argv", ["octowrap", "--color", "--no-color", str(f)])
         with pytest.raises(SystemExit, match="2"):
             main()
+
+
+class TestStdinMode:
+    """Tests for reading from stdin when '-' is passed."""
+
+    def test_stdin_basic(self, monkeypatch, capsys):
+        """Output contains rewrapped comment, no status messages."""
+        src = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert (
+            "# This is a comment that was wrapped at a short width previously." in out
+        )
+        assert "Reformatted" not in out
+        assert "file(s)" not in out
+
+    def test_stdin_no_changes(self, monkeypatch, capsys):
+        """When nothing changes, output equals input."""
+        src = "x = 1\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert out == src
+
+    def test_stdin_check_clean(self, monkeypatch, capsys):
+        """--check with clean input exits 0."""
+        monkeypatch.setattr("sys.stdin", io.StringIO("x = 1\n"))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+
+    def test_stdin_check_dirty(self, monkeypatch, capsys):
+        """--check with dirty input exits 1."""
+        src = "# This is a comment that was wrapped\n# at a short width previously.\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", "-"])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+    def test_stdin_diff(self, monkeypatch, capsys):
+        """--diff output contains unified diff with <stdin>."""
+        src = "# This is a comment that was wrapped\n# at a short width previously.\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert "--- <stdin>" in out
+        assert "+++ <stdin>" in out
+
+    def test_stdin_mixed_paths_error(self, monkeypatch, capsys):
+        """Mixing '-' with other paths prints error and exits 1."""
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.argv", ["octowrap", "-", "foo.py"])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "cannot be mixed" in err
+
+    def test_stdin_interactive_error(self, monkeypatch, capsys):
+        """--interactive with stdin prints error and exits 1."""
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", "-"])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "cannot be used with stdin" in err
+
+    def test_stdin_empty(self, monkeypatch, capsys):
+        """Empty stdin produces empty output and exits 0."""
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.argv", ["octowrap", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert out == ""
+
+    def test_stdin_line_length(self, monkeypatch, capsys):
+        """Respects -l flag for stdin input."""
+        src = "# A moderately long comment that fits at 88 but not at 40.\nx = 1\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "-l", "40", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert all(len(line) <= 40 for line in out.splitlines())

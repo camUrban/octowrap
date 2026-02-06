@@ -33,16 +33,22 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 
 ### rewrap.py pipeline
 
-1. **CLI parsing** (`main()`) — accepts paths, `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive, `--color`/`--no-color`. Recursive is on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
+1. **CLI parsing** (`main()`) — accepts paths (or `-` for stdin), `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive, `--color`/`--no-color`. Recursive is on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
 2. **Config loading** — `config.py` discovers `pyproject.toml` walking up from CWD (or uses `--config PATH`), reads `[tool.octowrap]`, validates keys/types. Precedence: hardcoded defaults < config file < CLI args
-3. **File discovery** — walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
-4. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
-5. **Preservation checks** — each comment is tested against heuristics:
+3. **Stdin mode** — when `-` is passed as the sole path, reads from stdin, rewraps via `process_content()`, and writes to stdout. Supports `--diff`, `--check`, and `-l`. Cannot be mixed with other paths or `-i`.
+4. **File discovery** — walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
+5. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
+6. **Preservation checks** — each comment is tested against heuristics:
    - `is_likely_code()` — 21 patterns detecting commented-out Python code
    - `is_divider()` — repeated-character separator lines
    - `is_list_item()` — bullets, numbered items, special markers
-6. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
-7. **Output** — interactive per-block approval (`a` accept, `A` accept all, `s` skip, `q` quit) with colorized diffs, or batch mode
+7. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
+8. **Output** — interactive per-block approval (`a` accept, `A` accept all, `s` skip, `q` quit) with colorized diffs, or batch mode
+
+### Key functions
+
+- `process_content(content, max_line_length, interactive)` — pure string-in/string-out transformation; core rewrap logic shared by both file and stdin paths
+- `process_file(filepath, max_line_length, dry_run, interactive)` — reads file, calls `process_content()`, conditionally writes back
 
 ## Tooling
 

@@ -338,18 +338,15 @@ def prompt_user() -> str:
             return "q"
 
 
-def process_file(
-    filepath: Path,
+def process_content(
+    content: str,
     max_line_length: int = 88,
-    dry_run: bool = False,
     interactive: bool = False,
 ) -> tuple[bool, str]:
-    """Process a single file, rewrapping comment blocks.
+    """Rewrap comment blocks in a string of Python source.
 
     Returns (changed, new_content).
     """
-    with open(filepath, newline="") as f:
-        content = f.read()
     lines = content.splitlines(keepends=True)
 
     # Normalize line endings for processing
@@ -367,7 +364,7 @@ def process_file(
         else:
             rewrapped = rewrap_comment_block(block, max_line_length)
 
-            if not interactive or dry_run:
+            if not interactive:
                 # Non interactive: just apply all changes
                 new_lines.extend(rewrapped)
             elif accept_all:
@@ -408,6 +405,26 @@ def process_file(
 
     changed = new_content != content
 
+    return changed, new_content
+
+
+def process_file(
+    filepath: Path,
+    max_line_length: int = 88,
+    dry_run: bool = False,
+    interactive: bool = False,
+) -> tuple[bool, str]:
+    """Process a single file, rewrapping comment blocks.
+
+    Returns (changed, new_content).
+    """
+    with open(filepath, newline="") as f:
+        content = f.read()
+
+    changed, new_content = process_content(
+        content, max_line_length, interactive=interactive and not dry_run
+    )
+
     if changed and not dry_run:
         with open(filepath, "w", newline="") as f:
             f.write(new_content)
@@ -420,7 +437,10 @@ def main():
         description="Rewrap # block comments to a specified line width."
     )
     parser.add_argument(
-        "paths", nargs="+", type=Path, help="Files or directories to process"
+        "paths",
+        nargs="+",
+        type=Path,
+        help="Files or directories to process (use '-' to read from stdin)",
     )
     parser.add_argument(
         "-l",
@@ -512,6 +532,40 @@ def main():
 
     if args.diff or args.check:
         args.dry_run = True
+
+    # Handle stdin mode when '-' is passed as a path
+    stdin_mode = any(str(p) == "-" for p in args.paths)
+    if stdin_mode:
+        if len(args.paths) > 1:
+            print(
+                "octowrap: error: '-' cannot be mixed with other paths",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        if args.interactive:
+            print(
+                "octowrap: error: --interactive cannot be used with stdin",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+        content = sys.stdin.read()
+        changed, new_content = process_content(content, args.line_length)
+
+        if args.diff and changed:
+            diff = difflib.unified_diff(
+                content.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile="<stdin>",
+                tofile="<stdin>",
+            )
+            sys.stdout.write("".join(diff))
+        elif args.check:
+            raise SystemExit(1 if changed else 0)
+        else:
+            sys.stdout.write(new_content)
+
+        raise SystemExit(0)
 
     files_to_process = []
     for path in args.paths:

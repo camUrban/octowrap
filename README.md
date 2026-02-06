@@ -10,6 +10,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves list items (bullets, numbered items)
 - Preserves special markers (`TODO`, `FIXME`, `NOTE`, `XXX`, `HACK`)
 - Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs (`a` accept, `A` accept all, `s` skip, `q` quit)
+- Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Project-level configuration via `[tool.octowrap]` in `pyproject.toml`
 
@@ -26,6 +27,19 @@ uv pip install -e ".[dev]"
 ```bash
 octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
 ```
+
+### Stdin/stdout
+
+Pass `-` as the path to read from stdin and write to stdout:
+
+```bash
+echo "# A very long comment that needs rewrapping to a shorter width." | octowrap -
+cat file.py | octowrap - --diff          # show diff
+cat file.py | octowrap - --check         # exit 1 if changes needed
+cat file.py | octowrap - -l 79           # custom line length
+```
+
+Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode).
 
 ### Example
 
