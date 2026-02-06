@@ -270,7 +270,7 @@ def process_file(
     filepath: Path,
     max_line_length: int = 88,
     dry_run: bool = False,
-    accept_all: bool = False,
+    interactive: bool = False,
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
@@ -294,7 +294,7 @@ def process_file(
         else:
             rewrapped = rewrap_comment_block(block, max_line_length)
 
-            if accept_all or dry_run:
+            if not interactive or dry_run:
                 # Non interactive: just apply all changes
                 new_lines.extend(rewrapped)
             else:
@@ -363,17 +363,16 @@ def main():
         "-r", "--recursive", action="store_true", help="Process directories recursively"
     )
     parser.add_argument(
-        "-a",
-        "--accept-all",
+        "-i",
+        "--interactive",
         action="store_true",
-        help="Accept all changes without prompting (non-interactive)",
+        help="Review each change interactively before applying",
     )
 
     args = parser.parse_args()
 
     if args.diff:
         args.dry_run = True
-        args.accept_all = True  # --diff implies non interactive
 
     files_to_process = []
     for path in args.paths:
@@ -395,7 +394,7 @@ def main():
                 filepath,
                 args.line_length,
                 dry_run=args.dry_run,
-                accept_all=args.accept_all,
+                interactive=args.interactive,
             )
 
             if changed:

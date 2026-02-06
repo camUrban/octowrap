@@ -15,19 +15,30 @@ WRAPPABLE_CONTENT = (
 class TestMain:
     """Tests for the main() CLI orchestration function."""
 
-    def test_accept_all(self, tmp_path, monkeypatch, capsys):
+    def test_default_non_interactive(self, tmp_path, monkeypatch, capsys):
+        """By default, changes are applied without prompting."""
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", str(f)])
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
         main()
         out = capsys.readouterr().out
         assert "Reformatted:" in out
         assert "1 file(s) reformatted." in out
 
+    def test_interactive_flag(self, tmp_path, monkeypatch, capsys):
+        """With -i, the user is prompted per block."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted." in out
+
     def test_dry_run(self, tmp_path, monkeypatch, capsys):
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("sys.argv", ["octowrap", "--dry-run", "-a", str(f)])
+        monkeypatch.setattr("sys.argv", ["octowrap", "--dry-run", str(f)])
         main()
         out = capsys.readouterr().out
         assert "Would reformat:" in out
@@ -49,7 +60,7 @@ class TestMain:
     def test_no_changes(self, tmp_path, monkeypatch, capsys):
         f = tmp_path / "a.py"
         f.write_bytes(b"x = 1\n")
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", str(f)])
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
         main()
         out = capsys.readouterr().out
         assert "0 file(s) reformatted." in out
@@ -59,14 +70,14 @@ class TestMain:
         f.write_bytes(
             b"# A moderately long comment that fits at 120 but not at 40.\nx = 1\n"
         )
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", "-l", "40", str(f)])
+        monkeypatch.setattr("sys.argv", ["octowrap", "-l", "40", str(f)])
         main()
         content = f.read_text()
         assert all(len(line) <= 40 for line in content.splitlines())
 
     def test_missing_path_warns(self, tmp_path, monkeypatch, capsys):
         fake = tmp_path / "nonexistent.py"
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", str(fake)])
+        monkeypatch.setattr("sys.argv", ["octowrap", str(fake)])
         main()
         out = capsys.readouterr().out
         assert "not found, skipping" in out
@@ -77,7 +88,7 @@ class TestMain:
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "nested.py").write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", str(tmp_path)])
+        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
         main()
         out = capsys.readouterr().out
         assert "1 file(s) reformatted." in out
@@ -88,7 +99,7 @@ class TestMain:
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "nested.py").write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", "-r", str(tmp_path)])
+        monkeypatch.setattr("sys.argv", ["octowrap", "-r", str(tmp_path)])
         main()
         out = capsys.readouterr().out
         assert "2 file(s) reformatted." in out
@@ -110,7 +121,7 @@ class TestMain:
             return real_process_file(filepath, *args, **kwargs)
 
         monkeypatch.setattr(mod, "process_file", failing_process_file)
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", str(good), str(bad)])
+        monkeypatch.setattr("sys.argv", ["octowrap", str(good), str(bad)])
         main()
         out = capsys.readouterr().out
         assert "Error processing" in out
@@ -124,7 +135,7 @@ class TestEntryPoints:
         """Running via python -m octowrap exercises __main__.py in-process."""
         f = tmp_path / "a.py"
         f.write_bytes(b"x = 1\n")
-        monkeypatch.setattr("sys.argv", ["octowrap", "-a", str(f)])
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
         runpy.run_module("octowrap", run_name="__main__")
         out = capsys.readouterr().out
         assert "0 file(s) reformatted." in out
@@ -134,7 +145,7 @@ class TestEntryPoints:
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         result = subprocess.run(
-            ["octowrap", "-a", str(f)],
+            ["octowrap", str(f)],
             capture_output=True,
             text=True,
         )

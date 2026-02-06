@@ -33,7 +33,7 @@ All logic currently lives in `src/octowrap/rewrap.py`. `cli.py` imports and expo
 
 ### rewrap.py pipeline
 
-1. **CLI parsing** (`main()`) — accepts paths, `--line-length` (default 88), `--dry-run`, `--diff`, `-r` recursive, `-a` accept-all
+1. **CLI parsing** (`main()`) — accepts paths, `--line-length` (default 88), `--dry-run`, `--diff`, `-r` recursive, `-i` interactive
 2. **File discovery** — walks directories for `*.py` files
 3. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
 4. **Preservation checks** — each comment is tested against heuristics:
