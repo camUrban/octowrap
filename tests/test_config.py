@@ -83,3 +83,35 @@ class TestLoadConfig:
         _write_pyproject(tmp_path, b"[tool.octowrap]\nline-length = true\n")
         with pytest.raises(ConfigError, match="expects an integer, got a boolean"):
             load_config(tmp_path / "pyproject.toml")
+
+    def test_loads_exclude(self, tmp_path):
+        _write_pyproject(
+            tmp_path, b'[tool.octowrap]\nexclude = ["migrations", "generated"]\n'
+        )
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"exclude": ["migrations", "generated"]}
+
+    def test_loads_extend_exclude(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\nextend-exclude = ["vendor"]\n')
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"extend-exclude": ["vendor"]}
+
+    def test_exclude_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\nexclude = "not-a-list"\n')
+        with pytest.raises(ConfigError, match="expects a list of strings"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_exclude_non_string_element_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\nexclude = [1, 2]\n")
+        with pytest.raises(ConfigError, match="element 0 is int"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_extend_exclude_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\nextend-exclude = 42\n")
+        with pytest.raises(ConfigError, match="expects a list of strings"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_extend_exclude_non_string_element_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\nextend-exclude = ["ok", true]\n')
+        with pytest.raises(ConfigError, match="element 1 is bool"):
+            load_config(tmp_path / "pyproject.toml")

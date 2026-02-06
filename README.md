@@ -23,7 +23,7 @@ uv pip install -e ".[dev]"
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--dry-run] [--diff] [-r] [-i]
+octowrap <files_or_dirs> [--line-length 88] [--dry-run] [--diff] [--check] [--no-recursive] [-i]
 ```
 
 ### Example
@@ -49,15 +49,21 @@ Add a `[tool.octowrap]` section to your `pyproject.toml` to set project-level de
 ```toml
 [tool.octowrap]
 line-length = 120
-recursive = true
+recursive = false
+exclude = ["migrations", "generated"]
+extend-exclude = ["vendor"]
 ```
 
-| Key           | Type | Default | CLI equivalent  |
-|---------------|------|---------|-----------------|
-| `line-length` | int  | 88      | `--line-length` |
-| `recursive`   | bool | false   | `-r`            |
+| Key              | Type       | Default | CLI equivalent   |
+|------------------|------------|---------|------------------|
+| `line-length`    | int        | 88      | `--line-length`  |
+| `recursive`      | bool       | true    | `--no-recursive` |
+| `exclude`        | list[str]  | —       | —                |
+| `extend-exclude` | list[str]  | —       | —                |
 
 CLI flags always take precedence over config values.
+
+`exclude` replaces the built-in default exclude list entirely. `extend-exclude` adds patterns to the defaults (or to `exclude` if set). Default excludes: `.git`, `.hg`, `.svn`, `.bzr`, `.venv`, `venv`, `.tox`, `.nox`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `__pycache__`, `__pypackages__`, `_build`, `build`, `dist`, `node_modules`, `.eggs`. Patterns are matched against individual path components using `fnmatch`.
 
 ## License
 

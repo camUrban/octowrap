@@ -11,12 +11,43 @@ level and rewraps them using textwrap. It preserves:
 
 import argparse
 import difflib
+import fnmatch
 import re
 import sys
 import textwrap
 from pathlib import Path
 
 from octowrap.config import ConfigError, load_config
+
+DEFAULT_EXCLUDES: list[str] = [
+    ".git",
+    ".hg",
+    ".svn",
+    ".bzr",
+    ".venv",
+    "venv",
+    ".tox",
+    ".nox",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    "__pycache__",
+    "__pypackages__",
+    "_build",
+    "build",
+    "dist",
+    "node_modules",
+    ".eggs",
+]
+
+
+def is_excluded(path: Path, exclude_patterns: list[str]) -> bool:
+    """Check if any component of *path* matches an exclude pattern."""
+    for part in path.parts:
+        for pattern in exclude_patterns:
+            if fnmatch.fnmatch(part, pattern):
+                return True
+    return False
 
 
 def is_likely_code(text: str) -> bool:
@@ -363,11 +394,15 @@ def main():
         "--diff", action="store_true", help="Show diff of changes (implies --dry-run)"
     )
     parser.add_argument(
-        "-r",
-        "--recursive",
+        "--check",
+        action="store_true",
+        help="Exit with code 1 if files would be changed (implies --dry-run)",
+    )
+    parser.add_argument(
+        "--no-recursive",
         action="store_true",
         default=None,
-        help="Process directories recursively",
+        help="Only process top-level .py files in directories",
     )
     parser.add_argument(
         "-i",
@@ -388,10 +423,21 @@ def main():
 
     if args.line_length is None:
         args.line_length = config.get("line-length", 88)
-    if args.recursive is None:
-        args.recursive = config.get("recursive", False)
 
-    if args.diff:
+    # Recursive: default True, config can override, --no-recursive wins
+    if args.no_recursive is None:
+        args.recursive = config.get("recursive", True)
+    else:
+        args.recursive = False
+
+    # Build effective exclude list
+    exclude_patterns = list(DEFAULT_EXCLUDES)
+    if "exclude" in config:
+        exclude_patterns = config["exclude"]
+    if "extend-exclude" in config:
+        exclude_patterns = exclude_patterns + config["extend-exclude"]
+
+    if args.diff or args.check:
         args.dry_run = True
 
     files_to_process = []
@@ -400,9 +446,15 @@ def main():
             files_to_process.append(path)
         elif path.is_dir():
             if args.recursive:
-                files_to_process.extend(path.rglob("*.py"))
+                files_to_process.extend(
+                    p
+                    for p in path.rglob("*.py")
+                    if not is_excluded(p, exclude_patterns)
+                )
             else:
-                files_to_process.extend(path.glob("*.py"))
+                files_to_process.extend(
+                    p for p in path.glob("*.py") if not is_excluded(p, exclude_patterns)
+                )
         else:
             print(f"Warning: {path} not found, skipping")
 
@@ -438,6 +490,9 @@ def main():
 
     action = "would be reformatted" if args.dry_run else "reformatted"
     print(f"\n{changed_count} file(s) {action}.")
+
+    if args.check and changed_count > 0:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -85,23 +85,23 @@ class TestMain:
         assert "not found, skipping" in out
 
     def test_directory_non_recursive(self, tmp_path, monkeypatch, capsys):
-        """Without -r, only top-level .py files are processed."""
+        """With --no-recursive, only top-level .py files are processed."""
         (tmp_path / "top.py").write_bytes(WRAPPABLE_CONTENT)
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "nested.py").write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
+        monkeypatch.setattr("sys.argv", ["octowrap", "--no-recursive", str(tmp_path)])
         main()
         out = capsys.readouterr().out
         assert "1 file(s) reformatted." in out
 
     def test_directory_recursive(self, tmp_path, monkeypatch, capsys):
-        """With -r, nested .py files are also found."""
+        """Directories recurse by default (no flag needed)."""
         (tmp_path / "top.py").write_bytes(WRAPPABLE_CONTENT)
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "nested.py").write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("sys.argv", ["octowrap", "-r", str(tmp_path)])
+        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
         main()
         out = capsys.readouterr().out
         assert "2 file(s) reformatted." in out
@@ -187,9 +187,9 @@ class TestConfigIntegration:
             "# A moderately long comment that fits at 88 but not at 40.\n"
         )
 
-    def test_config_sets_recursive(self, tmp_path, monkeypatch, capsys):
-        """Config recursive = true makes nested files found without -r."""
-        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nrecursive = true\n")
+    def test_config_sets_recursive_false(self, tmp_path, monkeypatch, capsys):
+        """Config recursive = false disables the default recursion."""
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nrecursive = false\n")
         (tmp_path / "top.py").write_bytes(WRAPPABLE_CONTENT)
         sub = tmp_path / "sub"
         sub.mkdir()
@@ -198,7 +198,7 @@ class TestConfigIntegration:
         monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
         main()
         out = capsys.readouterr().out
-        assert "2 file(s) reformatted." in out
+        assert "1 file(s) reformatted." in out
 
     def test_invalid_config_exits(self, tmp_path, monkeypatch, capsys):
         """Unknown config keys cause a non zero exit."""
@@ -217,6 +217,125 @@ class TestConfigIntegration:
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted." in out
+
+    def test_config_exclude_replaces_defaults(self, tmp_path, monkeypatch, capsys):
+        """Config exclude replaces the default exclude list."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\nexclude = ["custom_dir"]\n'
+        )
+        # .venv should NOT be excluded since defaults are replaced
+        venv_dir = tmp_path / ".venv"
+        venv_dir.mkdir()
+        (venv_dir / "a.py").write_bytes(WRAPPABLE_CONTENT)
+        # custom_dir SHOULD be excluded
+        custom_dir = tmp_path / "custom_dir"
+        custom_dir.mkdir()
+        (custom_dir / "b.py").write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
+        main()
+        out = capsys.readouterr().out
+        # Only .venv/a.py should be processed (custom_dir excluded)
+        assert "1 file(s) reformatted." in out
+
+    def test_config_extend_exclude(self, tmp_path, monkeypatch, capsys):
+        """Config extend-exclude adds to the default exclude list."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\nextend-exclude = ["extra"]\n'
+        )
+        # .venv should still be excluded (defaults preserved)
+        venv_dir = tmp_path / ".venv"
+        venv_dir.mkdir()
+        (venv_dir / "a.py").write_bytes(WRAPPABLE_CONTENT)
+        # extra should also be excluded
+        extra_dir = tmp_path / "extra"
+        extra_dir.mkdir()
+        (extra_dir / "b.py").write_bytes(WRAPPABLE_CONTENT)
+        # top-level file should be processed
+        (tmp_path / "c.py").write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
+        main()
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted." in out
+
+
+class TestCheckMode:
+    """Tests for the --check flag."""
+
+    def test_check_exits_zero_when_clean(self, tmp_path, monkeypatch, capsys):
+        """No changes needed → exit 0."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
+        main()  # should not raise
+        out = capsys.readouterr().out
+        assert "0 file(s) would be reformatted." in out
+
+    def test_check_exits_one_when_dirty(self, tmp_path, monkeypatch, capsys):
+        """Changes needed → exit 1."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+    def test_check_with_diff(self, tmp_path, monkeypatch, capsys):
+        """--check --diff shows diff AND exits 1."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", "--diff", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        out = capsys.readouterr().out
+        assert "---" in out
+        assert "+++" in out
+
+    def test_check_does_not_write(self, tmp_path, monkeypatch, capsys):
+        """--check must not modify files on disk."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
+        with pytest.raises(SystemExit):
+            main()
+        assert f.read_bytes() == WRAPPABLE_CONTENT
+
+
+class TestDefaultExcludes:
+    """Tests for default directory exclusion."""
+
+    def test_default_excludes_skip_venv(self, tmp_path, monkeypatch, capsys):
+        """.venv/ is auto-skipped by default excludes."""
+        venv_dir = tmp_path / ".venv"
+        venv_dir.mkdir()
+        (venv_dir / "a.py").write_bytes(WRAPPABLE_CONTENT)
+        (tmp_path / "b.py").write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
+        main()
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted." in out
+
+    def test_default_excludes_skip_pycache(self, tmp_path, monkeypatch, capsys):
+        """__pycache__/ is auto-skipped by default excludes."""
+        cache_dir = tmp_path / "__pycache__"
+        cache_dir.mkdir()
+        (cache_dir / "a.py").write_bytes(WRAPPABLE_CONTENT)
+        (tmp_path / "b.py").write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
+        main()
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted." in out
+
+    def test_excludes_do_not_affect_explicit_files(self, tmp_path, monkeypatch, capsys):
+        """Passing a file directly always processes it, even in excluded dir."""
+        venv_dir = tmp_path / ".venv"
+        venv_dir.mkdir()
+        f = venv_dir / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
         main()
         out = capsys.readouterr().out

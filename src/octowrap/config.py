@@ -8,10 +8,14 @@ class ConfigError(Exception):
     """Raised when the [tool.octowrap] section contains invalid settings."""
 
 
-VALID_KEYS: dict[str, type] = {
+_SCALAR_KEYS: dict[str, type] = {
     "line-length": int,
     "recursive": bool,
 }
+
+_LIST_STR_KEYS: set[str] = {"exclude", "extend-exclude"}
+
+VALID_KEYS: set[str] = {*_SCALAR_KEYS, *_LIST_STR_KEYS}
 
 
 def find_config_file(start_dir: Path | None = None) -> Path | None:
@@ -66,17 +70,32 @@ def load_config(config_path: Path | None = None) -> dict:
         if key not in VALID_KEYS:
             raise ConfigError(f"Unknown config key: {key!r}")
 
-        expected_type = VALID_KEYS[key]
+        if key in _LIST_STR_KEYS:
+            if not isinstance(value, list):
+                raise ConfigError(
+                    f"Config key {key!r} expects a list of strings, "
+                    f"got {type(value).__name__}"
+                )
+            for i, item in enumerate(value):
+                if not isinstance(item, str):
+                    raise ConfigError(
+                        f"Config key {key!r} expects a list of strings, "
+                        f"but element {i} is {type(item).__name__}"
+                    )
+        else:
+            expected_type = _SCALAR_KEYS[key]
 
-        # bool is a subclass of int in Python, so guard against it explicitly.
-        if expected_type is int and isinstance(value, bool):
-            raise ConfigError(f"Config key {key!r} expects an integer, got a boolean")
+            # bool is a subclass of int in Python, so guard against it explicitly.
+            if expected_type is int and isinstance(value, bool):
+                raise ConfigError(
+                    f"Config key {key!r} expects an integer, got a boolean"
+                )
 
-        if not isinstance(value, expected_type):
-            raise ConfigError(
-                f"Config key {key!r} expects {expected_type.__name__}, "
-                f"got {type(value).__name__}"
-            )
+            if not isinstance(value, expected_type):
+                raise ConfigError(
+                    f"Config key {key!r} expects {expected_type.__name__}, "
+                    f"got {type(value).__name__}"
+                )
 
         result[key] = value
 
