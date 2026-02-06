@@ -24,7 +24,7 @@ uv pip install -e ".[dev]"
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
+octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
 ```
 
 ### Example
@@ -75,7 +75,7 @@ extend-exclude = ["vendor"]
 | `exclude`        | list[str]  | —       | —                |
 | `extend-exclude` | list[str]  | —       | —                |
 
-CLI flags always take precedence over config values.
+CLI flags always take precedence over config values. Use `--config PATH` to point to a specific `pyproject.toml` instead of relying on auto-discovery.
 
 `exclude` replaces the built-in default exclude list entirely. `extend-exclude` adds patterns to the defaults (or to `exclude` if set). Default excludes: `.git`, `.hg`, `.svn`, `.bzr`, `.venv`, `venv`, `.tox`, `.nox`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `__pycache__`, `__pypackages__`, `_build`, `build`, `dist`, `node_modules`, `.eggs`. Patterns are matched against individual path components using `fnmatch`.
 

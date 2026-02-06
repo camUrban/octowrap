@@ -455,6 +455,13 @@ def main():
         help="Review each change interactively before applying",
     )
 
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to pyproject.toml config file (default: auto-discover)",
+    )
+
     color_group = parser.add_mutually_exclusive_group()
     color_group.add_argument(
         "--color",
@@ -482,7 +489,7 @@ def main():
     # Load config from pyproject.toml and merge with CLI args.
     # Precedence: hardcoded defaults < config file < CLI args.
     try:
-        config = load_config()
+        config = load_config(args.config)
     except ConfigError as exc:
         print(f"octowrap: config error: {exc}", file=sys.stderr)
         raise SystemExit(1)

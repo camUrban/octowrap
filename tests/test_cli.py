@@ -263,6 +263,74 @@ class TestConfigIntegration:
         assert "1 file(s) reformatted." in out
 
 
+class TestConfigFlag:
+    """Tests for the --config flag."""
+
+    def test_config_flag_reads_specified_file(self, tmp_path, monkeypatch, capsys):
+        """--config points to a specific pyproject.toml."""
+        cfg = tmp_path / "custom" / "pyproject.toml"
+        cfg.parent.mkdir()
+        cfg.write_text("[tool.octowrap]\nline-length = 40\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# A moderately long comment that fits at 88 but not at 40.\nx = 1\n"
+        )
+        monkeypatch.setattr("sys.argv", ["octowrap", "--config", str(cfg), str(f)])
+        main()
+        content = f.read_text()
+        assert all(len(line) <= 40 for line in content.splitlines())
+
+    def test_config_flag_overridden_by_cli(self, tmp_path, monkeypatch, capsys):
+        """CLI --line-length takes precedence over --config values."""
+        cfg = tmp_path / "pyproject.toml"
+        cfg.write_text("[tool.octowrap]\nline-length = 40\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# A moderately long comment that fits at 88 but not at 40.\nx = 1\n"
+        )
+        monkeypatch.setattr(
+            "sys.argv", ["octowrap", "--config", str(cfg), "-l", "88", str(f)]
+        )
+        main()
+        content = f.read_text()
+        assert content.startswith(
+            "# A moderately long comment that fits at 88 but not at 40.\n"
+        )
+
+    def test_config_flag_ignores_auto_discovery(self, tmp_path, monkeypatch, capsys):
+        """--config prevents auto-discovery of a nearer pyproject.toml."""
+        # Place a config in CWD that sets line-length = 40
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nline-length = 40\n")
+        # Point --config at an empty config (no octowrap section)
+        alt = tmp_path / "other" / "pyproject.toml"
+        alt.parent.mkdir()
+        alt.write_text("[tool.other]\nfoo = 1\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# A moderately long comment that fits at 88 but not at 40.\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--config", str(alt), str(f)])
+        main()
+        content = f.read_text()
+        # Should use default 88, not the CWD config's 40
+        assert content.startswith(
+            "# A moderately long comment that fits at 88 but not at 40.\n"
+        )
+
+    def test_config_flag_invalid_file_exits(self, tmp_path, monkeypatch, capsys):
+        """--config pointing to a file with bad config causes exit."""
+        cfg = tmp_path / "pyproject.toml"
+        cfg.write_text("[tool.octowrap]\nbogus = 42\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--config", str(cfg), str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "config error" in err
+
+
 class TestCheckMode:
     """Tests for the --check flag."""
 
