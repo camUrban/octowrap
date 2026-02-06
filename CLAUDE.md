@@ -36,13 +36,13 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 1. **CLI parsing** (`main()`) — accepts paths, `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive. Recursive is on by default.
 2. **Config loading** — `config.py` discovers `pyproject.toml` walking up from CWD, reads `[tool.octowrap]`, validates keys/types. Precedence: hardcoded defaults < config file < CLI args
 3. **File discovery** — walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
-3. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
-4. **Preservation checks** — each comment is tested against heuristics:
+4. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
+5. **Preservation checks** — each comment is tested against heuristics:
    - `is_likely_code()` — 21 patterns detecting commented-out Python code
    - `is_divider()` — repeated-character separator lines
    - `is_list_item()` — bullets, numbered items, special markers
-5. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
-6. **Output** — interactive per-block approval with colorized diffs, or batch mode
+6. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
+7. **Output** — interactive per-block approval with colorized diffs, or batch mode
 
 ## Tooling
 
@@ -52,3 +52,4 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 - **ty** for type checking
 - **pytest** for testing (with pytest-cov for coverage)
 - **pre-commit** hooks run ruff-check, ruff-format, and ty
+- `.pre-commit-hooks.yaml` defines the `octowrap` hook for external consumers

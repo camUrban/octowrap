@@ -42,6 +42,19 @@ After (`--line-length 88`):
 # columns.
 ```
 
+## Pre-commit Hook
+
+Add octowrap to your `.pre-commit-config.yaml`:
+
+```yaml
+- repo: https://github.com/camUrban/octowrap
+  rev: v0.1.0
+  hooks:
+    - id: octowrap
+      # args: [-l, "79"]       # custom line length
+      # args: [--check]        # fail without modifying (useful for CI)
+```
+
 ## Configuration
 
 Add a `[tool.octowrap]` section to your `pyproject.toml` to set project-level defaults:

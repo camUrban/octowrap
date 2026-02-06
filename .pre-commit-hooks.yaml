@@ -1,0 +1,6 @@
+- id: octowrap
+  name: octowrap
+  description: Rewrap Python # comments to a specified line length
+  entry: octowrap
+  language: python
+  types: [python]
