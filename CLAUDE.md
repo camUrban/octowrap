@@ -33,7 +33,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 
 ### rewrap.py pipeline
 
-1. **CLI parsing** (`main()`) — accepts paths, `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive. Recursive is on by default.
+1. **CLI parsing** (`main()`) — accepts paths, `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive, `--color`/`--no-color`. Recursive is on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
 2. **Config loading** — `config.py` discovers `pyproject.toml` walking up from CWD, reads `[tool.octowrap]`, validates keys/types. Precedence: hardcoded defaults < config file < CLI args
 3. **File discovery** — walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
 4. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code

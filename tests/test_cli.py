@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 
+import octowrap.rewrap as mod
 from octowrap.cli import main
 
 # fmt: off
@@ -340,3 +341,70 @@ class TestDefaultExcludes:
         main()
         out = capsys.readouterr().out
         assert "1 file(s) reformatted." in out
+
+
+class TestColorFlags:
+    """Tests for --color / --no-color / auto-detect."""
+
+    def test_force_color_on(self, tmp_path, monkeypatch, capsys):
+        """--color forces _USE_COLOR to True regardless of TTY."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--color", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "s")
+        main()
+        assert mod._USE_COLOR is True
+
+    def test_force_color_off(self, tmp_path, monkeypatch, capsys):
+        """--no-color forces _USE_COLOR to False regardless of TTY."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--no-color", str(f)])
+        main()
+        assert mod._USE_COLOR is False
+
+    def test_auto_detect_tty(self, tmp_path, monkeypatch, capsys):
+        """Without flags, color is enabled when stdout is a TTY."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        monkeypatch.delenv("NO_COLOR", raising=False)
+        main()
+        assert mod._USE_COLOR is True
+
+    def test_auto_detect_non_tty(self, tmp_path, monkeypatch, capsys):
+        """Without flags, color is disabled when stdout is not a TTY."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+        main()
+        assert mod._USE_COLOR is False
+
+    def test_no_color_env_var(self, tmp_path, monkeypatch, capsys):
+        """NO_COLOR env var disables color even on a TTY."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+        monkeypatch.setenv("NO_COLOR", "1")
+        main()
+        assert mod._USE_COLOR is False
+
+    def test_color_flag_overrides_no_color_env(self, tmp_path, monkeypatch, capsys):
+        """Explicit --color wins over NO_COLOR env var."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--color", str(f)])
+        monkeypatch.setenv("NO_COLOR", "1")
+        main()
+        assert mod._USE_COLOR is True
+
+    def test_color_and_no_color_mutually_exclusive(self, tmp_path, monkeypatch):
+        """--color and --no-color cannot be used together."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--color", "--no-color", str(f)])
+        with pytest.raises(SystemExit, match="2"):
+            main()

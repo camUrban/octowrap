@@ -10,6 +10,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves list items (bullets, numbered items)
 - Preserves special markers (`TODO`, `FIXME`, `NOTE`, `XXX`, `HACK`)
 - Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs
+- Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Project-level configuration via `[tool.octowrap]` in `pyproject.toml`
 
 ## Development Setup
@@ -23,7 +24,7 @@ uv pip install -e ".[dev]"
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--dry-run] [--diff] [--check] [--no-recursive] [-i]
+octowrap <files_or_dirs> [--line-length 88] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
 ```
 
 ### Example

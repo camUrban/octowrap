@@ -12,6 +12,7 @@ level and rewraps them using textwrap. It preserves:
 import argparse
 import difflib
 import fnmatch
+import os
 import re
 import sys
 import textwrap
@@ -240,8 +241,13 @@ def rewrap_comment_block(
     return result
 
 
+_USE_COLOR: bool = True
+
+
 def colorize(text: str, color: str) -> str:
     """Add ANSI color codes to text."""
+    if not _USE_COLOR:
+        return text
     colors = {
         "red": "\033[91m",
         "green": "\033[92m",
@@ -411,7 +417,29 @@ def main():
         help="Review each change interactively before applying",
     )
 
+    color_group = parser.add_mutually_exclusive_group()
+    color_group.add_argument(
+        "--color",
+        dest="color",
+        action="store_true",
+        default=None,
+        help="Force colored output",
+    )
+    color_group.add_argument(
+        "--no-color",
+        dest="color",
+        action="store_false",
+        help="Disable colored output",
+    )
+
     args = parser.parse_args()
+
+    # Resolve color setting: --color → on, --no-color → off, neither → auto-detect.
+    global _USE_COLOR
+    if args.color is None:
+        _USE_COLOR = sys.stdout.isatty() and "NO_COLOR" not in os.environ
+    else:
+        _USE_COLOR = args.color
 
     # Load config from pyproject.toml and merge with CLI args.
     # Precedence: hardcoded defaults < config file < CLI args.

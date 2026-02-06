@@ -1,22 +1,33 @@
+import octowrap.rewrap as mod
 from octowrap.rewrap import colorize, prompt_user, show_block_diff
 
 
 class TestColorize:
-    def test_known_color(self):
+    def test_known_color(self, monkeypatch):
+        monkeypatch.setattr(mod, "_USE_COLOR", True)
         result = colorize("hello", "red")
         assert result == "\033[91mhello\033[0m"
 
-    def test_bold(self):
+    def test_bold(self, monkeypatch):
+        monkeypatch.setattr(mod, "_USE_COLOR", True)
         result = colorize("title", "bold")
         assert result == "\033[1mtitle\033[0m"
 
-    def test_unknown_color_still_resets(self):
+    def test_unknown_color_still_resets(self, monkeypatch):
+        monkeypatch.setattr(mod, "_USE_COLOR", True)
         result = colorize("text", "nonexistent")
         assert result == "text\033[0m"
 
-    def test_empty_string(self):
+    def test_empty_string(self, monkeypatch):
+        monkeypatch.setattr(mod, "_USE_COLOR", True)
         result = colorize("", "green")
         assert result == "\033[92m\033[0m"
+
+    def test_disabled_returns_plain_text(self, monkeypatch):
+        monkeypatch.setattr(mod, "_USE_COLOR", False)
+        assert colorize("hello", "red") == "hello"
+        assert colorize("title", "bold") == "title"
+        assert colorize("", "green") == ""
 
 
 class TestShowBlockDiff:
