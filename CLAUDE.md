@@ -13,16 +13,17 @@ octowrap is a Python CLI tool that rewraps Python `#` comments to a specified li
 uv pip install -e ".[dev]"
 
 # Run the tool
-python src/octowrap/rewrap.py <files_or_dirs>
+octowrap <files_or_dirs>
 
-# Run tests
+# Run tests (coverage enabled by default via pyproject.toml)
 pytest tests/
 
-# Lint and format
+# Lint, format, and type-check
 ruff check .
 ruff format .
+ty check .
 
-# Run all pre-commit hooks
+# Run all pre-commit hooks (ruff-check, ruff-format, ty)
 pre-commit run --all-files
 ```
 
@@ -46,6 +47,7 @@ All logic currently lives in `src/octowrap/rewrap.py`. `cli.py` imports and expo
 
 - **Python 3.10+**, no runtime dependencies (stdlib only)
 - **uv** for package management
-- **ruff** for linting and formatting (default config, no overrides in pyproject.toml)
-- **pytest** for testing
-- **pre-commit** hooks run ruff-check and ruff-format
+- **ruff** for linting, formatting, and import sorting
+- **ty** for type checking
+- **pytest** for testing (with pytest-cov for coverage)
+- **pre-commit** hooks run ruff-check, ruff-format, and ty
