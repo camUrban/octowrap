@@ -1,6 +1,8 @@
 import runpy
 import subprocess
 
+import pytest
+
 from octowrap.cli import main
 
 # fmt: off
@@ -151,3 +153,71 @@ class TestEntryPoints:
         )
         assert result.returncode == 0
         assert "1 file(s) reformatted." in result.stdout
+
+
+class TestConfigIntegration:
+    """End to end tests for pyproject.toml config support."""
+
+    def test_config_sets_line_length(self, tmp_path, monkeypatch, capsys):
+        """Config line-length is respected when CLI flag is absent."""
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nline-length = 40\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# A moderately long comment that fits at 88 but not at 40.\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        assert all(len(line) <= 40 for line in content.splitlines())
+
+    def test_cli_overrides_config_line_length(self, tmp_path, monkeypatch, capsys):
+        """CLI --line-length takes precedence over config."""
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nline-length = 40\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# A moderately long comment that fits at 88 but not at 40.\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-l", "88", str(f)])
+        main()
+        content = f.read_text()
+        # At width 88 the comment fits on one line
+        assert content.startswith(
+            "# A moderately long comment that fits at 88 but not at 40.\n"
+        )
+
+    def test_config_sets_recursive(self, tmp_path, monkeypatch, capsys):
+        """Config recursive = true makes nested files found without -r."""
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nrecursive = true\n")
+        (tmp_path / "top.py").write_bytes(WRAPPABLE_CONTENT)
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "nested.py").write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(tmp_path)])
+        main()
+        out = capsys.readouterr().out
+        assert "2 file(s) reformatted." in out
+
+    def test_invalid_config_exits(self, tmp_path, monkeypatch, capsys):
+        """Unknown config keys cause a non zero exit."""
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nbogus = 42\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "config error" in err
+
+    def test_no_config_uses_defaults(self, tmp_path, monkeypatch, capsys):
+        """Without a pyproject.toml, default behavior is preserved."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted." in out

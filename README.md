@@ -10,6 +10,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves list items (bullets, numbered items)
 - Preserves special markers (`TODO`, `FIXME`, `NOTE`, `XXX`, `HACK`)
 - Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs
+- Project-level configuration via `[tool.octowrap]` in `pyproject.toml`
 
 ## Development Setup
 
@@ -40,6 +41,23 @@ After (`--line-length 88`):
 # length and really should be wrapped to fit within a reasonable number of
 # columns.
 ```
+
+## Configuration
+
+Add a `[tool.octowrap]` section to your `pyproject.toml` to set project-level defaults:
+
+```toml
+[tool.octowrap]
+line-length = 120
+recursive = true
+```
+
+| Key           | Type | Default | CLI equivalent  |
+|---------------|------|---------|-----------------|
+| `line-length` | int  | 88      | `--line-length` |
+| `recursive`   | bool | false   | `-r`            |
+
+CLI flags always take precedence over config values.
 
 ## License
 

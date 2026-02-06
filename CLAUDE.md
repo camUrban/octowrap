@@ -29,23 +29,24 @@ pre-commit run --all-files
 
 ## Architecture
 
-All logic currently lives in `src/octowrap/rewrap.py`. `cli.py` imports and exposes `main` from `rewrap.py` to serve as the package entry point, and `__main__.py` enables `python -m octowrap`.
+Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.toml` config discovery and validation. `cli.py` imports and exposes `main` from `rewrap.py` to serve as the package entry point, and `__main__.py` enables `python -m octowrap`.
 
 ### rewrap.py pipeline
 
 1. **CLI parsing** (`main()`) — accepts paths, `--line-length` (default 88), `--dry-run`, `--diff`, `-r` recursive, `-i` interactive
-2. **File discovery** — walks directories for `*.py` files
+2. **Config loading** — `config.py` discovers `pyproject.toml` walking up from CWD, reads `[tool.octowrap]`, validates keys/types. Precedence: hardcoded defaults < config file < CLI args
+3. **File discovery** — walks directories for `*.py` files
 3. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
 4. **Preservation checks** — each comment is tested against heuristics:
    - `is_likely_code()` — 21 patterns detecting commented-out Python code
    - `is_divider()` — repeated-character separator lines
    - `is_list_item()` — bullets, numbered items, special markers
 5. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
-6. **Output** — interactive per-block approval with colorized diffs, or batch mode with `-a`
+6. **Output** — interactive per-block approval with colorized diffs, or batch mode
 
 ## Tooling
 
-- **Python 3.10+**, no runtime dependencies (stdlib only)
+- **Python 3.11+**, no runtime dependencies (stdlib only, uses `tomllib` for config)
 - **uv** for package management
 - **ruff** for linting, formatting, and import sorting
 - **ty** for type checking

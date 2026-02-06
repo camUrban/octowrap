@@ -12,8 +12,11 @@ level and rewraps them using textwrap. It preserves:
 import argparse
 import difflib
 import re
+import sys
 import textwrap
 from pathlib import Path
+
+from octowrap.config import ConfigError, load_config
 
 
 def is_likely_code(text: str) -> bool:
@@ -348,7 +351,7 @@ def main():
         "-l",
         "--line-length",
         type=int,
-        default=88,
+        default=None,
         help="Maximum line length (default: 88)",
     )
     parser.add_argument(
@@ -360,7 +363,11 @@ def main():
         "--diff", action="store_true", help="Show diff of changes (implies --dry-run)"
     )
     parser.add_argument(
-        "-r", "--recursive", action="store_true", help="Process directories recursively"
+        "-r",
+        "--recursive",
+        action="store_true",
+        default=None,
+        help="Process directories recursively",
     )
     parser.add_argument(
         "-i",
@@ -370,6 +377,19 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Load config from pyproject.toml and merge with CLI args.
+    # Precedence: hardcoded defaults < config file < CLI args.
+    try:
+        config = load_config()
+    except ConfigError as exc:
+        print(f"octowrap: config error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if args.line_length is None:
+        args.line_length = config.get("line-length", 88)
+    if args.recursive is None:
+        args.recursive = config.get("recursive", False)
 
     if args.diff:
         args.dry_run = True
