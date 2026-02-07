@@ -190,6 +190,73 @@ class TestProcessFileInteractive:
         process_file(f, max_line_length=88, interactive=True)
         assert not called
 
+    def test_exclude_wraps_block_with_pragmas(self, tmp_path, monkeypatch):
+        """Excluding a block wraps it with octowrap: off/on pragmas."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        changed, content = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        assert "# octowrap: off" in content
+        assert "# octowrap: on" in content
+
+    def test_exclude_adds_exactly_two_lines(self, tmp_path, monkeypatch):
+        """Excluding a block adds exactly two lines (the off/on pragmas)."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        original_line_count = WRAPPABLE_CONTENT.count(b"\n")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        assert content.count("\n") == original_line_count + 2
+
+    def test_exclude_preserves_indent(self, tmp_path, monkeypatch):
+        """Pragmas match the indentation of the excluded block."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"def foo():\n"
+            b"    # This is a comment that was wrapped\n"
+            b"    # at a short width previously.\n"
+        )
+        # fmt: on
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        assert "    # octowrap: off" in content
+        assert "    # octowrap: on" in content
+
+    def test_excluded_block_ignored_on_rerun(self, tmp_path, monkeypatch):
+        """Re-running on an excluded file produces no changes (idempotent)."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        process_file(f, max_line_length=88, interactive=True)
+        # Second run: no interactive prompt needed, nothing should change
+        changed, _ = process_file(f, max_line_length=88)
+        assert not changed
+
+    def test_exclude_then_accept(self, tmp_path, monkeypatch):
+        """Exclude on first block and accept on second works correctly."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        responses = iter(["e", "a"])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        changed, content = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        # First block should be wrapped with pragmas, original text preserved
+        assert "# octowrap: off" in content
+        assert "# First block that was wrapped\n" in content
+        assert "# octowrap: on" in content
+        # Second block should be rewrapped
+        assert "# Second block that was also wrapped at a short width." in content
+
 
 class TestToolDirectivePreservation:
     """Integration tests for tool directive preservation during rewrapping."""

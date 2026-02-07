@@ -175,3 +175,11 @@ class TestPromptUser:
 
         monkeypatch.setattr(mod, "_getch", raise_interrupt)
         assert prompt_user() == "q"
+
+    def test_exclude(self, monkeypatch):
+        monkeypatch.setattr(mod, "_getch", lambda: "e")
+        assert prompt_user() == "e"
+
+    def test_exclude_uppercase(self, monkeypatch):
+        monkeypatch.setattr(mod, "_getch", lambda: "E")
+        assert prompt_user() == "e"

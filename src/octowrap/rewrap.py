@@ -344,11 +344,12 @@ def _getch() -> str:
 def prompt_user() -> str:
     """Prompt user for action on a block.
 
-    Returns: 'a' (accept), 'A' (accept all), 's' (skip), or 'q' (quit)
+    Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 's' (skip), or 'q' (quit)
     """
     prompt = (
         f"[{colorize('a', 'green')}]ccept / "
         f"accept [{colorize('A', 'green')}]ll / "
+        f"[{colorize('e', 'cyan')}]xclude / "
         f"[{colorize('s', 'yellow')}]kip / "
         f"[{colorize('q', 'red')}]uit? "
     )
@@ -362,7 +363,7 @@ def prompt_user() -> str:
             if ch == "A":
                 return "A"
             ch = ch.lower()
-            if ch in ("a", "s", "q"):
+            if ch in ("a", "e", "s", "q"):
                 return ch
         except (EOFError, KeyboardInterrupt):
             print()
@@ -465,6 +466,11 @@ def process_content(
                     new_lines.extend(rewrapped)
                 elif action == "a":
                     new_lines.extend(rewrapped)
+                elif action == "e":
+                    indent = block["indent"]
+                    new_lines.append(f"{indent}# octowrap: off")
+                    new_lines.extend(block["lines"])
+                    new_lines.append(f"{indent}# octowrap: on")
                 elif action == "q":
                     user_quit = True
                     new_lines.extend(block["lines"])
