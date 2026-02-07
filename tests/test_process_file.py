@@ -1,4 +1,11 @@
+import pytest
+
 from octowrap.rewrap import process_content, process_file
+
+
+def _raise_os_error(*_args, **_kwargs):
+    raise OSError("fake replace failure")
+
 
 # fmt: off
 WRAPPABLE_CONTENT = (
@@ -97,6 +104,21 @@ class TestProcessFile:
         changed, content = process_file(f, max_line_length=88)
         assert changed
         assert f.read_bytes().decode() == content
+
+    def test_atomic_write_cleans_up_on_failure(self, tmp_path, monkeypatch):
+        """If os.replace fails, the temp file is removed and the original is intact."""
+        f = tmp_path / "t.py"
+        original = b"# This was wrapped at a very\n# short width before.\n"
+        f.write_bytes(original)
+
+        monkeypatch.setattr("os.replace", _raise_os_error)
+        with pytest.raises(OSError):
+            process_file(f, max_line_length=88)
+
+        # Original file should be untouched
+        assert f.read_bytes() == original
+        # No temp files left behind
+        assert list(tmp_path.glob("*.tmp")) == []
 
 
 class TestProcessFileInteractive:

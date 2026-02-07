@@ -15,6 +15,7 @@ import fnmatch
 import os
 import re
 import sys
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -524,8 +525,14 @@ def process_file(
     )
 
     if changed and not dry_run:
-        with open(filepath, "w", newline="") as f:
-            f.write(new_content)
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
+        try:
+            with open(tmp_fd, "w", newline="") as f:
+                f.write(new_content)
+            os.replace(tmp_path, filepath)
+        except BaseException:
+            os.unlink(tmp_path)
+            raise
 
     return changed, new_content
 

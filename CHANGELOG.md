@@ -4,6 +4,7 @@
 
 ### Added
 - `e` (exclude) action in interactive mode (`-i`) that wraps the current block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it automatically
+- Atomic file writes (temp file + rename) to protect against interruptions and power loss
 
 ### Fixed
 - `q` (quit) in interactive mode now stops all processing, including remaining files in a multi file run

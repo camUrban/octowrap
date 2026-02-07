@@ -19,6 +19,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit). Quitting stops all processing, including remaining files.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
+- Atomic file writes (temp file + rename) to protect against interruptions and power loss
 - Project-level configuration via `[tool.octowrap]` in `pyproject.toml`
 
 ## Development Setup

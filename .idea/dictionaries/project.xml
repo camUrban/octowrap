@@ -17,6 +17,7 @@
       <w>tcsadrain</w>
       <w>tcsetattr</w>
       <w>termios</w>
+      <w>xclude</w>
     </words>
   </dictionary>
 </component>
