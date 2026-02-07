@@ -301,7 +301,10 @@ def colorize(text: str, color: str) -> str:
 
 
 def show_block_diff(
-    original_lines: list[str], new_lines: list[str], start_line: int
+    original_lines: list[str],
+    new_lines: list[str],
+    start_line: int,
+    filepath: str = "",
 ) -> bool:
     """Display a diff for a single comment block.
 
@@ -311,7 +314,10 @@ def show_block_diff(
         return False
 
     end = start_line + len(original_lines)
-    header = colorize(f"Lines {start_line + 1}-{end}:", "bold")
+    if filepath:
+        header = colorize(f"{filepath} Lines {start_line + 1}-{end}:", "bold")
+    else:
+        header = colorize(f"Lines {start_line + 1}-{end}:", "bold")
     print(f"\n{header}")
     print(colorize("─" * 60, "cyan"))
 
@@ -376,6 +382,7 @@ def process_content(
     max_line_length: int = 88,
     interactive: bool = False,
     _state: dict | None = None,
+    filepath: str = "",
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
@@ -460,7 +467,7 @@ def process_content(
             new_lines.extend(rewrapped)
         else:
             has_changes = not user_quit and show_block_diff(
-                block["lines"], rewrapped, block["start_idx"]
+                block["lines"], rewrapped, block["start_idx"], filepath=filepath
             )
 
             if has_changes:
@@ -503,6 +510,14 @@ def process_content(
     return changed, new_content
 
 
+def _relative_path(filepath: Path) -> Path:
+    """Return *filepath* relative to CWD when possible, otherwise unchanged."""
+    try:
+        return filepath.resolve().relative_to(Path.cwd())
+    except ValueError:
+        return filepath
+
+
 def process_file(
     filepath: Path,
     max_line_length: int = 88,
@@ -522,6 +537,7 @@ def process_file(
         max_line_length,
         interactive=interactive and not dry_run,
         _state=_state,
+        filepath=str(_relative_path(filepath)),
     )
 
     if changed and not dry_run:

@@ -1,6 +1,9 @@
+import os
+from pathlib import Path
+
 import pytest
 
-from octowrap.rewrap import process_content, process_file
+from octowrap.rewrap import _relative_path, process_content, process_file
 
 
 def _raise_os_error(*_args, **_kwargs):
@@ -479,3 +482,36 @@ class TestPragma:
         changed, result = process_content(content, max_line_length=88, interactive=True)
         assert not changed
         assert not called
+
+
+class TestRelativePath:
+    def test_path_inside_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "sub" / "file.py"
+        result = _relative_path(target)
+        assert result == Path("sub") / "file.py"
+
+    def test_path_outside_cwd(self, tmp_path, monkeypatch):
+        # CWD is a subdirectory that doesn't contain the target
+        cwd = tmp_path / "a"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        target = tmp_path / "b" / "file.py"
+        result = _relative_path(target)
+        # Should fall back to the original path unchanged
+        assert result == target
+
+
+class TestInteractiveFilepath:
+    def test_diff_header_shows_relative_path(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        sub = tmp_path / "pkg"
+        sub.mkdir()
+        f = sub / "mod.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        process_file(f, max_line_length=88, interactive=True)
+        out = capsys.readouterr().out
+        expected = os.path.join("pkg", "mod.py")
+        assert expected in out
