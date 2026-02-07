@@ -827,10 +827,11 @@ def main():
                 tofile="<stdin>",
             )
             sys.stdout.write("".join(diff))
-        elif args.check:
-            raise SystemExit(1 if changed else 0)
-        else:
+        elif not (args.diff or args.check):
             sys.stdout.write(new_content)
+
+        if args.check:
+            raise SystemExit(1 if changed else 0)
 
         raise SystemExit(0)
 

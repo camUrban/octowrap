@@ -586,6 +586,26 @@ class TestStdinMode:
         assert "--- <stdin>" in out
         assert "+++ <stdin>" in out
 
+    def test_stdin_diff_check_dirty(self, monkeypatch, capsys):
+        """--diff --check with dirty input shows diff and exits 1."""
+        src = "# This is a comment that was wrapped\n# at a short width previously.\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff", "--check", "-"])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        out = capsys.readouterr().out
+        assert "--- <stdin>" in out
+        assert "+++ <stdin>" in out
+
+    def test_stdin_diff_check_clean(self, monkeypatch, capsys):
+        """--diff --check with clean input exits 0 with no output."""
+        monkeypatch.setattr("sys.stdin", io.StringIO("x = 1\n"))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff", "--check", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert out == ""
+
     def test_stdin_mixed_paths_error(self, monkeypatch, capsys):
         """Mixing '-' with other paths prints error and exits 1."""
         monkeypatch.setattr("sys.stdin", io.StringIO(""))

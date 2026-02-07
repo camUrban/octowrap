@@ -20,6 +20,7 @@
 
 ### Fixed
 - `q` (quit) in interactive mode now stops all processing, including remaining files in a multi file run
+- `--diff --check` in stdin mode now correctly exits 1 when changes are needed (previously always exited 0)
 
 ## 0.1.0 - 2026-02-05
 
