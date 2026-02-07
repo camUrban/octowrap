@@ -356,23 +356,29 @@ def rewrap_comment_block(
             parts = [first_content] + [c.strip() for c in para_contents[1:]]
             full_text = " ".join(parts).strip()
 
-            initial = prefix + marker_prefix
-            subsequent = prefix + " "
-            first_width = max_line_length - len(initial)
-            cont_width = max_line_length - len(subsequent)
-
-            if first_width < 10 or cont_width < 10:
-                # Too narrow — preserve as-is
+            # If there is no content after the TODO marker (e.g. "# TODO:"),
+            # preserve the original lines instead of emitting a blank line.
+            if not full_text:
                 for content in para_contents:
                     result.append(prefix + content)
             else:
-                wrapped = textwrap.fill(
-                    full_text,
-                    width=max_line_length,
-                    initial_indent=initial,
-                    subsequent_indent=subsequent,
-                )
-                result.extend(wrapped.split("\n"))
+                initial = prefix + marker_prefix
+                subsequent = prefix + " "
+                first_width = max_line_length - len(initial)
+                cont_width = max_line_length - len(subsequent)
+
+                if first_width < 10 or cont_width < 10:
+                    # Too narrow — preserve as-is
+                    for content in para_contents:
+                        result.append(prefix + content)
+                else:
+                    wrapped = textwrap.fill(
+                        full_text,
+                        width=max_line_length,
+                        initial_indent=initial,
+                        subsequent_indent=subsequent,
+                    )
+                    result.extend(wrapped.split("\n"))
         else:  # wrap
             text = " ".join(para_contents)
             wrapped = textwrap.fill(text, width=text_width)
