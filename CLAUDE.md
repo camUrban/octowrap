@@ -33,24 +33,24 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 
 ### rewrap.py pipeline
 
-1. **CLI parsing** (`main()`) — accepts paths (or `-` for stdin), `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive, `--color`/`--no-color`. Recursive is on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
-2. **Config loading** — `config.py` discovers `pyproject.toml` walking up from CWD (or uses `--config PATH`), reads `[tool.octowrap]`, validates keys/types. Precedence: hardcoded defaults < config file < CLI args
-3. **Stdin mode** — when `-` is passed as the sole path, reads from stdin, rewraps via `process_content()`, and writes to stdout. Supports `--diff`, `--check`, and `-l`. Cannot be mixed with other paths or `-i`.
-4. **File discovery** — walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
-5. **Block parsing** (`parse_comment_blocks()`) — groups consecutive same-indent comment lines into blocks, separating them from code
-6. **Pragma handling** — `parse_pragma()` detects `# octowrap: off` / `# octowrap: on` directives (case-insensitive). When a block contains pragmas, it's split at pragma boundaries; segments between off/on are preserved as-is. State carries across blocks.
-7. **Preservation checks** — each comment is tested against heuristics:
-   - `is_likely_code()` — 21 patterns detecting commented-out Python code
-   - `is_divider()` — repeated-character separator lines
-   - `is_list_item()` — bullets, numbered items, special markers
-   - `is_tool_directive()` — tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, PEP 484 type comments)
-8. **Rewrapping** (`rewrap_comment_block()`) — uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
-9. **Output** — interactive per-block approval (`a` accept, `A` accept all, `s` skip, `q` quit) with colorized diffs, or batch mode
+1. **CLI parsing** (`main()`): accepts paths (or `-` for stdin), `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive, `--color`/`--no-color`. Recursive is on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
+2. **Config loading**: `config.py` discovers `pyproject.toml` walking up from CWD (or uses `--config PATH`), reads `[tool.octowrap]`, validates keys/types. Precedence: hardcoded defaults < config file < CLI args
+3. **Stdin mode**: when `-` is passed as the sole path, reads from stdin, rewraps via `process_content()`, and writes to stdout. Supports `--diff`, `--check`, and `-l`. Cannot be mixed with other paths or `-i`.
+4. **File discovery**: walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
+5. **Block parsing** (`parse_comment_blocks()`): groups consecutive same-indent comment lines into blocks, separating them from code
+6. **Pragma handling**: `parse_pragma()` detects `# octowrap: off` / `# octowrap: on` directives (case-insensitive). When a block contains pragmas, it's split at pragma boundaries; segments between off/on are preserved as-is. State carries across blocks.
+7. **Preservation checks**: each comment is tested against heuristics:
+   - `is_likely_code()`: 21 patterns detecting commented-out Python code
+   - `is_divider()`: repeated-character separator lines
+   - `is_list_item()`: bullets, numbered items, special markers
+   - `is_tool_directive()`: tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, PEP 484 type comments)
+8. **Rewrapping** (`rewrap_comment_block()`): uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
+9. **Output**: interactive per block approval (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit) with colorized diffs, or batch mode. The `e` action wraps the original block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it.
 
 ### Key functions
 
-- `process_content(content, max_line_length, interactive)` — pure string-in/string-out transformation; core rewrap logic shared by both file and stdin paths
-- `process_file(filepath, max_line_length, dry_run, interactive)` — reads file, calls `process_content()`, conditionally writes back
+- `process_content(content, max_line_length, interactive)`: pure string-in/string-out transformation; core rewrap logic shared by both file and stdin paths
+- `process_file(filepath, max_line_length, dry_run, interactive)`: reads file, calls `process_content()`, conditionally writes back
 
 ## Tooling
 

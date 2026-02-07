@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0 - 2026-02-07
+
+### Added
+- `e` (exclude) action in interactive mode (`-i`) that wraps the current block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it automatically
+
 ## 0.1.0 - 2026-02-05
 
 ### Added
