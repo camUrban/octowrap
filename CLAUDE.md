@@ -45,7 +45,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
    - `is_list_item()`: bullets, numbered items, special markers
    - `is_tool_directive()`: tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, PEP 484 type comments)
 8. **Rewrapping** (`rewrap_comment_block()`): uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
-9. **Output**: interactive per block approval (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit) with colorized diffs, or batch mode. The `e` action wraps the original block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it.
+9. **Output**: interactive per block approval (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit) with colorized diffs, or batch mode. The `e` action wraps the original block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it. Quitting stops all processing, including remaining files in a multi file run.
 
 ### Key functions
 

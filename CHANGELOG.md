@@ -5,6 +5,9 @@
 ### Added
 - `e` (exclude) action in interactive mode (`-i`) that wraps the current block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it automatically
 
+### Fixed
+- `q` (quit) in interactive mode now stops all processing, including remaining files in a multi file run
+
 ## 0.1.0 - 2026-02-05
 
 ### Added

@@ -16,7 +16,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves special markers (`TODO`, `FIXME`, `NOTE`, `XXX`, `HACK`)
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
-- Applies changes automatically by default, or use `-i` for interactive per-block approval with colorized diffs (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit)
+- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit). Quitting stops all processing, including remaining files.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Project-level configuration via `[tool.octowrap]` in `pyproject.toml`
