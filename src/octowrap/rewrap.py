@@ -150,7 +150,7 @@ def is_todo_marker(
         return False
     flags = 0 if case_sensitive else re.IGNORECASE
     # Sort longest-first to avoid prefix ambiguity
-    for p in sorted(patterns, key=lambda s: len(s), reverse=True):
+    for p in sorted(patterns, key=len, reverse=True):
         if re.match(rf"{re.escape(p)}\b", text.lstrip(), flags):
             return True
     return False
