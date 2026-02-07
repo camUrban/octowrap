@@ -23,7 +23,7 @@ ruff check .
 ruff format .
 ty check .
 
-# Run all pre-commit hooks (ruff-check, ruff-format, ty)
+# Run all pre-commit hooks (ruff-check, ruff-format, octowrap, ty)
 pre-commit run --all-files
 ```
 
@@ -59,5 +59,5 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 - **ruff** for linting, formatting, and import sorting
 - **ty** for type checking
 - **pytest** for testing (with pytest-cov for coverage)
-- **pre-commit** hooks run ruff-check, ruff-format, and ty
+- **pre-commit** hooks run ruff-check, ruff-format, octowrap, and ty
 - `.pre-commit-hooks.yaml` defines the `octowrap` hook for external consumers

@@ -68,3 +68,6 @@ jobs:
 
       - name: Ruff format check
         run: ruff format --check .
+
+      - name: octowrap check
+        run: octowrap --check .

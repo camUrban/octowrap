@@ -3,6 +3,7 @@
 ## 0.2.0 - 2026-02-07
 
 ### Added
+- Dogfooding: octowrap now runs on its own codebase via a local pre-commit hook and a CI lint step (`octowrap --check .`)
 - Interactive mode diffs now display the relative filepath alongside line numbers
 - `e` (exclude) action in interactive mode (`-i`) that wraps the current block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it automatically
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss

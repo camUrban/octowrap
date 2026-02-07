@@ -229,8 +229,8 @@ def rewrap_comment_block(
         if match:
             contents.append(match.group(1))
         else:
-            # Defensive: parse_comment_blocks only yields # lines, so
-            # the regex above will always match.
+            # Defensive: parse_comment_blocks only yields # lines, so the regex above
+            # will always match.
             contents.append("")  # pragma: no cover
 
     # Group into paragraphs (separated by blank comment lines or preserved lines)
@@ -270,8 +270,8 @@ def rewrap_comment_block(
                 if content:
                     result.append(prefix + content)
                 else:
-                    # Defensive: preserved lines always have non empty
-                    # content since blank lines are handled above.
+                    # Defensive: preserved lines always have non empty content since
+                    # blank lines are handled above.
                     result.append(indent + "#")  # pragma: no cover
         else:  # wrap
             text = " ".join(para_contents)
@@ -410,8 +410,8 @@ def process_content(
         has_pragma = any(parse_pragma(bline) is not None for bline in block["lines"])
 
         if has_pragma:
-            # Split the block into sub blocks at pragma boundaries, processing
-            # each segment according to the current disabled state.
+            # Split the block into sub blocks at pragma boundaries, processing each
+            # segment according to the current disabled state.
             segment_lines: list[str] = []
             segment_start = block["start_idx"]
 
@@ -627,8 +627,8 @@ def main():
     else:
         _USE_COLOR = args.color
 
-    # Load config from pyproject.toml and merge with CLI args.
-    # Precedence: hardcoded defaults < config file < CLI args.
+    # Load config from pyproject.toml and merge with CLI args. Precedence: hardcoded
+    # defaults < config file < CLI args.
     try:
         config = load_config(args.config)
     except ConfigError as exc:

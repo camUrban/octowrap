@@ -65,8 +65,8 @@ class TestLoadConfig:
 
     def test_no_file_returns_empty(self):
         result = load_config(None)
-        # find_config_file may return None when CWD has no pyproject.toml;
-        # in that case load_config falls through to an empty dict.
+        # find_config_file may return None when CWD has no pyproject.toml; in that case
+        # load_config falls through to an empty dict.
         assert isinstance(result, dict)
 
     def test_unknown_key_raises(self, tmp_path):
