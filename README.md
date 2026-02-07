@@ -133,6 +133,18 @@ Add octowrap to your `.pre-commit-config.yaml`:
       # args: [--check]        # fail without modifying (useful for CI)
 ```
 
+## GitHub Actions
+
+Use `--check` in CI to fail if any comments would be rewrapped:
+
+```yaml
+- name: Install octowrap
+  run: pip install octowrap
+
+- name: Check comment wrapping
+  run: octowrap --check .
+```
+
 ## Configuration
 
 Add a `[tool.octowrap]` section to your `pyproject.toml` to set project-level defaults:

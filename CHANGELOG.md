@@ -16,6 +16,7 @@
 - New `pyproject.toml` config options: `todo-patterns`, `extend-todo-patterns`, `todo-case-sensitive`, `todo-multiline`
 - `todo-patterns` replaces the default patterns (`["todo", "fixme"]`); `extend-todo-patterns` adds to them
 - Setting `todo-patterns = []` disables TODO detection, causing those lines to be rewrapped as regular prose
+- A new section to the README for setting up octowrap as a CI test using GitHub Actions
 
 ### Fixed
 - `q` (quit) in interactive mode now stops all processing, including remaining files in a multi file run
