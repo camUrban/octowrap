@@ -150,7 +150,7 @@ def is_todo_marker(
         return False
     flags = 0 if case_sensitive else re.IGNORECASE
     # Sort longest-first to avoid prefix ambiguity
-    for p in sorted(patterns, key=len, reverse=True):
+    for p in sorted(patterns, key=lambda s: len(s), reverse=True):
         if re.match(rf"{re.escape(p)}\b", text.lstrip(), flags):
             return True
     return False
@@ -356,8 +356,8 @@ def rewrap_comment_block(
             parts = [first_content] + [c.strip() for c in para_contents[1:]]
             full_text = " ".join(parts).strip()
 
-            # If there is no content after the TODO marker (e.g. "# TODO:"),
-            # preserve the original lines instead of emitting a blank line.
+            # If there is no content after the TODO marker (e.g. "# TODO:"), preserve
+            # the original lines instead of emitting a blank line.
             if not full_text:
                 for content in para_contents:
                     result.append(prefix + content)
@@ -678,10 +678,12 @@ def process_file(
     )
 
     if changed and not dry_run:
+        original_mode = os.stat(filepath).st_mode
         tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
         try:
             with open(tmp_fd, "w", newline="") as f:
                 f.write(new_content)
+            os.chmod(tmp_path, original_mode)
             os.replace(tmp_path, filepath)
         except BaseException:
             os.unlink(tmp_path)

@@ -83,7 +83,7 @@ class TestShowBlockDiff:
         new = ["# b"]
         show_block_diff(original, new, 0)
         out = capsys.readouterr().out
-        assert out.lstrip().startswith("\n") or "Lines 1-1:" in out
+        assert out.startswith("\n") or "Lines 1-1:" in out
         # Should not have a path prefix before "Lines"
         for line in out.splitlines():
             if "Lines" in line:

@@ -246,6 +246,12 @@ class TestTodoRewrap:
         result = rewrap_comment_block(block, max_line_length=88)
         assert result == ["# TODO: fix this bug"]
 
+    def test_bare_todo_marker_preserved(self):
+        """A bare TODO with no content should be preserved, not become a blank line."""
+        block = make_block(["# TODO:"])
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert result == ["# TODO:"]
+
     def test_multiline_todo_collected(self):
         """Continuation lines (one-space indent) should be collected into the TODO."""
         block = make_block(
