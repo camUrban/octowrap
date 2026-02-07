@@ -219,3 +219,188 @@ class TestParsePragma:
     def test_parse_pragma_none_for_inline(self):
         """Inline pragma after code should not match (not a standalone comment)."""
         assert parse_pragma("x = 1  # octowrap: off") is None
+
+
+class TestTodoRewrap:
+    """Tests for TODO/FIXME rewrapping in rewrap_comment_block."""
+
+    def test_single_line_todo_rewrapped(self):
+        """A long single-line TODO should be rewrapped."""
+        block = make_block(
+            [
+                "# TODO: This is a very long todo item that definitely exceeds the eighty-eight character line length limit and should be rewrapped",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert len(result) > 1
+        assert result[0].startswith("# TODO: ")
+        # Continuation lines should have one-space indent
+        for line in result[1:]:
+            assert line.startswith("#  ")
+        for line in result:
+            assert len(line) <= 88
+
+    def test_short_todo_unchanged(self):
+        """A short TODO that fits on one line should stay as-is."""
+        block = make_block(["# TODO: fix this bug"])
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert result == ["# TODO: fix this bug"]
+
+    def test_multiline_todo_collected(self):
+        """Continuation lines (one-space indent) should be collected into the TODO."""
+        block = make_block(
+            [
+                "# TODO: This is the first line of a long todo that needs",
+                "#  to continue on the next line with more details",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert result[0].startswith("# TODO: ")
+        # All text should be present
+        full_text = " ".join(line.lstrip("# ") for line in result)
+        assert "first line" in full_text
+        assert "more details" in full_text
+
+    def test_multiline_disabled(self):
+        """With todo_multiline=False, continuation lines are not collected."""
+        block = make_block(
+            [
+                "# TODO: first line",
+                "#  continuation line",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88, todo_multiline=False)
+        # The TODO is just the first line; the continuation becomes prose
+        assert result[0] == "# TODO: first line"
+        assert any("continuation line" in line for line in result[1:])
+
+    def test_case_insensitive_default(self):
+        """Lowercase 'todo' should be detected by default."""
+        block = make_block(
+            [
+                "# todo: fix this very long comment that will exceed the line length limit for sure when combined with more text"
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert result[0].startswith("# todo: ")
+        for line in result:
+            assert len(line) <= 88
+
+    def test_case_sensitive(self):
+        """In case-sensitive mode, lowercase 'todo' is not a marker."""
+        block = make_block(
+            [
+                "# todo: this is a long comment that exceeds the configured maximum line length and should be rewrapped",
+            ]
+        )
+        result = rewrap_comment_block(
+            block, max_line_length=88, todo_case_sensitive=True
+        )
+        # 'todo' should not be treated as a marker — it becomes regular prose
+        assert result[0].startswith("# todo: ")
+        # No continuation indent (it's wrapped as regular prose)
+        for line in result:
+            assert len(line) <= 88
+
+    def test_custom_patterns(self):
+        """Custom patterns replace the defaults."""
+        block = make_block(
+            [
+                "# NOTE: this is a long note comment that exceeds the line length limit and should be wrapped properly by the tool",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88, todo_patterns=["note"])
+        assert result[0].startswith("# NOTE: ")
+        for line in result[1:]:
+            assert line.startswith("#  ")
+
+    def test_no_colon_after_marker(self):
+        """TODO without a colon should still be detected and rewrapped."""
+        block = make_block(
+            [
+                "# TODO fix this very long comment that exceeds the line length limit and should be rewrapped properly"
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert result[0].startswith("# TODO ")
+        for line in result:
+            assert len(line) <= 88
+
+    def test_indented_todo_block(self):
+        """An indented TODO block should preserve its indentation."""
+        block = make_block(
+            [
+                "    # TODO: This is a long indented todo that exceeds the line length and should be rewrapped to fit",
+            ],
+            indent="    ",
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        for line in result:
+            assert line.startswith("    # ")
+            assert len(line) <= 88
+        assert result[0].startswith("    # TODO: ")
+
+    def test_todo_followed_by_prose(self):
+        """A TODO followed by regular prose should not merge them."""
+        block = make_block(
+            [
+                "# TODO: fix this bug",
+                "# This is regular prose that follows the TODO.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# TODO: fix this bug" in result
+        assert "# This is regular prose that follows the TODO." in result
+
+    def test_multiple_todos_in_block(self):
+        """Multiple TODOs in the same block should each be treated separately."""
+        block = make_block(
+            [
+                "# TODO: first todo item",
+                "# FIXME: second fixme item",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# TODO: first todo item" in result
+        assert "# FIXME: second fixme item" in result
+
+    def test_empty_patterns_disables_todo(self):
+        """With empty patterns, TODO lines become regular prose."""
+        block = make_block(
+            [
+                "# TODO: this and that are two things",
+                "# that need to be fixed soon.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88, todo_patterns=[])
+        # Should be treated as regular prose and joined
+        full = " ".join(line.lstrip("# ") for line in result)
+        assert "TODO:" in full
+        assert "fixed soon" in full
+
+    def test_todo_too_narrow_preserves(self):
+        """When the TODO marker makes the available width < 10, preserve as-is."""
+        # Use a long custom pattern so that marker eats most of the line budget.
+        # prefix="# " (2), text_width=30-2=28 (>=20, no early return)
+        # initial="# SUPERLONGPATTERNNAME: " (24), first_width=30-24=6 (<10)
+        block = make_block(
+            ["# SUPERLONGPATTERNNAME: fix this thing"],
+        )
+        result = rewrap_comment_block(
+            block,
+            max_line_length=30,
+            todo_patterns=["superlongpatternname"],
+        )
+        assert result == ["# SUPERLONGPATTERNNAME: fix this thing"]
+
+    def test_prose_before_todo_flushed(self):
+        """Prose lines preceding a TODO should be flushed as a wrap paragraph."""
+        block = make_block(
+            [
+                "# Some prose before the todo.",
+                "# TODO: fix this bug",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# Some prose before the todo." in result
+        assert "# TODO: fix this bug" in result

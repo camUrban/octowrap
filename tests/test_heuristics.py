@@ -1,9 +1,12 @@
 import pytest
 
 from octowrap.rewrap import (
+    extract_todo_marker,
     is_divider,
     is_likely_code,
     is_list_item,
+    is_todo_continuation,
+    is_todo_marker,
     is_tool_directive,
     should_preserve_line,
 )
@@ -125,11 +128,6 @@ class TestIsListItem:
             "1) numbered paren",
             "a. lettered",
             "a) lettered paren",
-            "TODO: fix this",
-            "FIXME: broken",
-            "NOTE: important",
-            "XXX: needs work",
-            "HACK: temporary",
         ],
         ids=[
             "dash",
@@ -139,11 +137,6 @@ class TestIsListItem:
             "num_paren",
             "letter_dot",
             "letter_paren",
-            "TODO",
-            "FIXME",
-            "NOTE",
-            "XXX",
-            "HACK",
         ],
     )
     def test_detects_list_items(self, text):
@@ -155,6 +148,11 @@ class TestIsListItem:
             "Just a sentence.",
             "This contains a - dash but is not a list.",
             "",
+            "TODO: fix this",
+            "FIXME: broken",
+            "NOTE: important",
+            "XXX: needs work",
+            "HACK: temporary",
         ],
     )
     def test_rejects_non_list(self, text):
@@ -251,3 +249,163 @@ class TestShouldPreserveLine:
         """should_preserve_line does NOT check is_tool_directive; that's handled
         separately in rewrap_comment_block."""
         assert not should_preserve_line("type: ignore")
+
+
+class TestIsTodoMarker:
+    """Tests for is_todo_marker()."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "TODO fix this",
+            "TODO: fix this",
+            "todo fix this",
+            "Todo: fix this",
+            "FIXME broken",
+            "FIXME: broken",
+            "fixme broken",
+        ],
+        ids=[
+            "TODO_no_colon",
+            "TODO_colon",
+            "todo_lower",
+            "Todo_mixed",
+            "FIXME_no_colon",
+            "FIXME_colon",
+            "fixme_lower",
+        ],
+    )
+    def test_detects_default_patterns(self, text):
+        assert is_todo_marker(text)
+
+    def test_word_boundary(self):
+        """'TODOLIST' should not match 'todo' pattern."""
+        assert not is_todo_marker("TODOLIST something")
+
+    def test_rejects_non_starters(self):
+        """Text that doesn't start with a pattern should not match."""
+        assert not is_todo_marker("This is a TODO item")
+
+    def test_rejects_continuation_line(self):
+        """A line with leading space is not a marker (it's a continuation)."""
+        assert not is_todo_marker(" continue the todo")
+
+    def test_rejects_non_default_markers(self):
+        """NOTE/XXX/HACK are not in the default patterns."""
+        assert not is_todo_marker("NOTE: important")
+        assert not is_todo_marker("XXX: needs work")
+        assert not is_todo_marker("HACK: temporary")
+
+    def test_custom_patterns(self):
+        assert is_todo_marker("NOTE important", patterns=["note"])
+        assert is_todo_marker("WARN: something", patterns=["warn", "note"])
+
+    def test_custom_patterns_replaces_defaults(self):
+        """Custom patterns completely replace defaults."""
+        assert not is_todo_marker("TODO fix this", patterns=["note"])
+
+    def test_case_sensitive(self):
+        assert is_todo_marker("TODO fix", patterns=["TODO"], case_sensitive=True)
+        assert not is_todo_marker("todo fix", patterns=["TODO"], case_sensitive=True)
+        assert not is_todo_marker("Todo fix", patterns=["TODO"], case_sensitive=True)
+        # Default lowercase patterns only match lowercase in case-sensitive mode
+        assert is_todo_marker("todo fix", case_sensitive=True)
+        assert not is_todo_marker("TODO fix", case_sensitive=True)
+
+    def test_empty_patterns_disables(self):
+        """Empty pattern list disables detection entirely."""
+        assert not is_todo_marker("TODO fix this", patterns=[])
+
+    def test_leading_whitespace_stripped(self):
+        """Leading whitespace on the content is okay for markers."""
+        assert is_todo_marker("  TODO fix", patterns=["todo"])
+
+
+class TestIsTodoContinuation:
+    """Tests for is_todo_continuation()."""
+
+    def test_one_space_with_content(self):
+        assert is_todo_continuation(" continue this")
+
+    def test_one_space_with_word(self):
+        assert is_todo_continuation(" x")
+
+    def test_no_leading_space(self):
+        assert not is_todo_continuation("no leading space")
+
+    def test_two_spaces(self):
+        assert not is_todo_continuation("  two spaces")
+
+    def test_only_space(self):
+        """A single space with no content is not a continuation."""
+        assert not is_todo_continuation(" ")
+
+    def test_empty_string(self):
+        assert not is_todo_continuation("")
+
+    def test_tab_not_space(self):
+        assert not is_todo_continuation("\tcontent")
+
+
+class TestExtractTodoMarker:
+    """Tests for extract_todo_marker()."""
+
+    def test_todo_with_colon(self):
+        marker, content = extract_todo_marker("TODO: fix the bug")
+        assert marker == "TODO: "
+        assert content == "fix the bug"
+
+    def test_todo_without_colon(self):
+        marker, content = extract_todo_marker("TODO fix the bug")
+        assert marker == "TODO "
+        assert content == "fix the bug"
+
+    def test_fixme_with_colon(self):
+        marker, content = extract_todo_marker("FIXME: broken thing")
+        assert marker == "FIXME: "
+        assert content == "broken thing"
+
+    def test_case_insensitive_default(self):
+        marker, content = extract_todo_marker("todo: something")
+        assert marker == "todo: "
+        assert content == "something"
+
+    def test_case_sensitive(self):
+        marker, content = extract_todo_marker(
+            "TODO: fix", patterns=["TODO"], case_sensitive=True
+        )
+        assert marker == "TODO: "
+        assert content == "fix"
+
+    def test_case_sensitive_no_match(self):
+        """Lowercase 'todo' should not match uppercase pattern in case-sensitive mode."""
+        marker, content = extract_todo_marker(
+            "todo: fix", patterns=["TODO"], case_sensitive=True
+        )
+        assert marker == ""
+        assert content == "todo: fix"
+
+    def test_no_match(self):
+        marker, content = extract_todo_marker("Regular comment text")
+        assert marker == ""
+        assert content == "Regular comment text"
+
+    def test_custom_patterns(self):
+        marker, content = extract_todo_marker("NOTE: important", patterns=["note"])
+        assert marker == "NOTE: "
+        assert content == "important"
+
+    def test_extra_whitespace_after_colon(self):
+        marker, content = extract_todo_marker("TODO:  extra spaces")
+        assert marker == "TODO:  "
+        assert content == "extra spaces"
+
+    def test_no_content_after_marker(self):
+        marker, content = extract_todo_marker("TODO:")
+        assert marker == "TODO:"
+        assert content == ""
+
+    def test_preserves_leading_whitespace(self):
+        marker, content = extract_todo_marker("  TODO: fix")
+        assert marker == "  TODO: "
+        assert content == "fix"

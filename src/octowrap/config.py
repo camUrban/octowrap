@@ -11,9 +11,16 @@ class ConfigError(Exception):
 _SCALAR_KEYS: dict[str, type] = {
     "line-length": int,
     "recursive": bool,
+    "todo-case-sensitive": bool,
+    "todo-multiline": bool,
 }
 
-_LIST_STR_KEYS: set[str] = {"exclude", "extend-exclude"}
+_LIST_STR_KEYS: set[str] = {
+    "exclude",
+    "extend-exclude",
+    "todo-patterns",
+    "extend-todo-patterns",
+}
 
 VALID_KEYS: set[str] = {*_SCALAR_KEYS, *_LIST_STR_KEYS}
 

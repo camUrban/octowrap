@@ -278,6 +278,47 @@ class TestConfigIntegration:
         out = capsys.readouterr().out
         assert "1 file(s) reformatted." in out
 
+    def test_config_todo_patterns_replaces_defaults(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Config todo-patterns replaces the default TODO/FIXME patterns."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\ntodo-patterns = ["note"]\n'
+        )
+        f = tmp_path / "a.py"
+        # NOTE should now be treated as a TODO marker and rewrapped
+        f.write_bytes(
+            b"# NOTE: This is a long note that exceeds the line length and should be rewrapped as a todo-style marker item\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        assert lines[0].startswith("# NOTE: ")
+        # TODO should NOT be treated as a marker since defaults are replaced
+        f2 = tmp_path / "b.py"
+        f2.write_bytes(b"# TODO: short\nx = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f2)])
+        main()
+        assert "# TODO: short" in f2.read_text()
+
+    def test_config_extend_todo_patterns(self, tmp_path, monkeypatch, capsys):
+        """Config extend-todo-patterns adds to the default patterns."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\nextend-todo-patterns = ["note"]\n'
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# NOTE: This is a long note that exceeds the line length and should be rewrapped as a todo-style marker item\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        assert lines[0].startswith("# NOTE: ")
+
 
 class TestConfigFlag:
     """Tests for the --config flag."""

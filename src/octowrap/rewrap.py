@@ -51,6 +51,10 @@ DEFAULT_EXCLUDES: list[str] = [
     ".eggs",
 ]
 
+DEFAULT_TODO_PATTERNS: list[str] = ["todo", "fixme"]
+DEFAULT_TODO_CASE_SENSITIVE: bool = False
+DEFAULT_TODO_MULTILINE: bool = True
+
 
 def is_excluded(path: Path, exclude_patterns: list[str]) -> bool:
     """Check if any component of *path* matches an exclude pattern."""
@@ -108,11 +112,6 @@ def is_list_item(text: str) -> bool:
         r"^\s*[-*•]\s+",  # bullet points
         r"^\s*\d+[.)]\s+",  # numbered lists
         r"^\s*[a-zA-Z][.)]\s+",  # lettered lists
-        r"^\s*TODO\s*:",  # TODO items
-        r"^\s*FIXME\s*:",  # FIXME items
-        r"^\s*NOTE\s*:",  # NOTE items
-        r"^\s*XXX\s*:",  # XXX items
-        r"^\s*HACK\s*:",  # HACK items
     ]
     return any(re.match(p, text) for p in list_patterns)
 
@@ -133,6 +132,59 @@ def is_tool_directive(text: str) -> bool:
     ]
     stripped = text.strip()
     return any(re.match(p, stripped) for p in directive_patterns)
+
+
+def is_todo_marker(
+    text: str,
+    patterns: list[str] | None = None,
+    case_sensitive: bool = False,
+) -> bool:
+    """Check if *text* starts with a TODO/FIXME-style marker.
+
+    Matches at the start of *text* (after optional whitespace) so that
+    continuation lines with a leading space do **not** match.
+    """
+    if patterns is None:
+        patterns = DEFAULT_TODO_PATTERNS
+    if not patterns:
+        return False
+    flags = 0 if case_sensitive else re.IGNORECASE
+    # Sort longest-first to avoid prefix ambiguity
+    for p in sorted(patterns, key=lambda s: len(s), reverse=True):
+        if re.match(rf"{re.escape(p)}\b", text.lstrip(), flags):
+            return True
+    return False
+
+
+def is_todo_continuation(text: str) -> bool:
+    """Return ``True`` if *text* looks like a TODO continuation line.
+
+    A continuation line starts with exactly one space and has
+    non-whitespace content after it.
+    """
+    return text.startswith(" ") and not text.startswith("  ") and text.strip() != ""
+
+
+def extract_todo_marker(
+    text: str,
+    patterns: list[str] | None = None,
+    case_sensitive: bool = False,
+) -> tuple[str, str]:
+    """Extract the marker prefix and remaining content from a TODO line.
+
+    Returns ``(marker_prefix, content)`` — e.g. ``("TODO: ", "fix the bug")``.
+    If *text* does not match any pattern, returns ``("", text)``.
+    """
+    if patterns is None:
+        patterns = DEFAULT_TODO_PATTERNS
+    stripped = text.lstrip()
+    leading = text[: len(text) - len(stripped)]
+    flags = 0 if case_sensitive else re.IGNORECASE
+    for p in sorted(patterns, key=lambda s: len(s), reverse=True):
+        m = re.match(rf"({re.escape(p)}\b\s*:?\s*)(.*)", stripped, flags)
+        if m:
+            return (leading + m.group(1), m.group(2))
+    return ("", text)
 
 
 def should_preserve_line(text: str) -> bool:
@@ -208,11 +260,19 @@ def parse_comment_blocks(lines: list[str]) -> list[dict]:
 
 
 def rewrap_comment_block(
-    block: dict, max_line_length: int = 88, comment_prefix: str = "# "
+    block: dict,
+    max_line_length: int = 88,
+    comment_prefix: str = "# ",
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
 ) -> list[str]:
     """Rewrap a comment block to the specified line length."""
     indent = block["indent"]
     lines = block["lines"]
+
+    if todo_patterns is None:
+        todo_patterns = DEFAULT_TODO_PATTERNS
 
     # Calculate available width for text
     prefix = indent + comment_prefix
@@ -234,10 +294,12 @@ def rewrap_comment_block(
             contents.append("")  # pragma: no cover
 
     # Group into paragraphs (separated by blank comment lines or preserved lines)
-    paragraphs = []
-    current_para = []
+    paragraphs: list[tuple[str, list[str]]] = []
+    current_para: list[str] = []
+    i = 0
 
-    for content in contents:
+    while i < len(contents):
+        content = contents[i]
         if not content.strip():
             # Blank line: end current paragraph
             if current_para:
@@ -254,8 +316,21 @@ def rewrap_comment_block(
                 paragraphs.append(("wrap", current_para))
                 current_para = []
             paragraphs.append(("preserve", [content]))
+        elif is_todo_marker(content, todo_patterns, todo_case_sensitive):
+            # Flush current paragraph
+            if current_para:
+                paragraphs.append(("wrap", current_para))
+                current_para = []
+            # Collect TODO + continuation lines
+            todo_lines = [content]
+            if todo_multiline:
+                while i + 1 < len(contents) and is_todo_continuation(contents[i + 1]):
+                    i += 1
+                    todo_lines.append(contents[i])
+            paragraphs.append(("todo", todo_lines))
         else:
             current_para.append(content)
+        i += 1
 
     if current_para:
         paragraphs.append(("wrap", current_para))
@@ -273,6 +348,31 @@ def rewrap_comment_block(
                     # Defensive: preserved lines always have non empty content since
                     # blank lines are handled above.
                     result.append(indent + "#")  # pragma: no cover
+        elif para_type == "todo":
+            marker_prefix, first_content = extract_todo_marker(
+                para_contents[0], todo_patterns, todo_case_sensitive
+            )
+            # Join first-line content + stripped continuation lines
+            parts = [first_content] + [c.strip() for c in para_contents[1:]]
+            full_text = " ".join(parts).strip()
+
+            initial = prefix + marker_prefix
+            subsequent = prefix + " "
+            first_width = max_line_length - len(initial)
+            cont_width = max_line_length - len(subsequent)
+
+            if first_width < 10 or cont_width < 10:
+                # Too narrow — preserve as-is
+                for content in para_contents:
+                    result.append(prefix + content)
+            else:
+                wrapped = textwrap.fill(
+                    full_text,
+                    width=max_line_length,
+                    initial_indent=initial,
+                    subsequent_indent=subsequent,
+                )
+                result.extend(wrapped.split("\n"))
         else:  # wrap
             text = " ".join(para_contents)
             wrapped = textwrap.fill(text, width=text_width)
@@ -383,6 +483,9 @@ def process_content(
     interactive: bool = False,
     _state: dict | None = None,
     filepath: str = "",
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
@@ -429,7 +532,15 @@ def process_content(
                         if disabled:
                             new_lines.extend(segment_lines)
                         else:
-                            new_lines.extend(rewrap_comment_block(sub, max_line_length))
+                            new_lines.extend(
+                                rewrap_comment_block(
+                                    sub,
+                                    max_line_length,
+                                    todo_patterns=todo_patterns,
+                                    todo_case_sensitive=todo_case_sensitive,
+                                    todo_multiline=todo_multiline,
+                                )
+                            )
                         segment_start += len(segment_lines)
                         segment_lines = []
                     # Preserve the pragma line itself and update state.
@@ -450,7 +561,15 @@ def process_content(
                 if disabled:
                     new_lines.extend(segment_lines)
                 else:
-                    new_lines.extend(rewrap_comment_block(sub, max_line_length))
+                    new_lines.extend(
+                        rewrap_comment_block(
+                            sub,
+                            max_line_length,
+                            todo_patterns=todo_patterns,
+                            todo_case_sensitive=todo_case_sensitive,
+                            todo_multiline=todo_multiline,
+                        )
+                    )
             continue
 
         if disabled:
@@ -459,7 +578,13 @@ def process_content(
             continue
 
         # Use the normal rewrap logic.
-        rewrapped = rewrap_comment_block(block, max_line_length)
+        rewrapped = rewrap_comment_block(
+            block,
+            max_line_length,
+            todo_patterns=todo_patterns,
+            todo_case_sensitive=todo_case_sensitive,
+            todo_multiline=todo_multiline,
+        )
 
         if not interactive:
             new_lines.extend(rewrapped)
@@ -524,6 +649,9 @@ def process_file(
     dry_run: bool = False,
     interactive: bool = False,
     _state: dict | None = None,
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
@@ -538,6 +666,9 @@ def process_file(
         interactive=interactive and not dry_run,
         _state=_state,
         filepath=str(_relative_path(filepath)),
+        todo_patterns=todo_patterns,
+        todo_case_sensitive=todo_case_sensitive,
+        todo_multiline=todo_multiline,
     )
 
     if changed and not dry_run:
@@ -651,6 +782,15 @@ def main():
     if "extend-exclude" in config:
         exclude_patterns = exclude_patterns + config["extend-exclude"]
 
+    # Build effective TODO settings
+    todo_patterns: list[str] = list(DEFAULT_TODO_PATTERNS)
+    if "todo-patterns" in config:
+        todo_patterns = config["todo-patterns"]
+    if "extend-todo-patterns" in config:
+        todo_patterns = todo_patterns + config["extend-todo-patterns"]
+    todo_case_sensitive = config.get("todo-case-sensitive", DEFAULT_TODO_CASE_SENSITIVE)
+    todo_multiline = config.get("todo-multiline", DEFAULT_TODO_MULTILINE)
+
     if args.diff or args.check:
         args.dry_run = True
 
@@ -671,7 +811,13 @@ def main():
             raise SystemExit(1)
 
         content = sys.stdin.read()
-        changed, new_content = process_content(content, args.line_length)
+        changed, new_content = process_content(
+            content,
+            args.line_length,
+            todo_patterns=todo_patterns,
+            todo_case_sensitive=todo_case_sensitive,
+            todo_multiline=todo_multiline,
+        )
 
         if args.diff and changed:
             diff = difflib.unified_diff(
@@ -717,6 +863,9 @@ def main():
                 dry_run=args.dry_run,
                 interactive=args.interactive,
                 _state=interactive_state,
+                todo_patterns=todo_patterns,
+                todo_case_sensitive=todo_case_sensitive,
+                todo_multiline=todo_multiline,
             )
 
             if changed:

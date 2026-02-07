@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-octowrap is a Python CLI tool that rewraps Python `#` comments to a specified line length. It intelligently reformats comment blocks while preserving commented-out code, section dividers, list items, special markers (TODO, FIXME, NOTE, XXX, HACK), and tool directives (type: ignore, noqa, fmt: off, pragma: no cover, etc.).
+octowrap is a Python CLI tool that rewraps Python `#` comments to a specified line length. It intelligently reformats comment blocks while preserving commented-out code, section dividers, list items, and tool directives (type: ignore, noqa, fmt: off, pragma: no cover, etc.). TODO/FIXME markers are detected and rewrapped with proper continuation indent (one space), with configurable patterns, case sensitivity, and multi-line collection.
 
 ## Commands
 
@@ -34,7 +34,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 ### rewrap.py pipeline
 
 1. **CLI parsing** (`main()`): accepts paths (or `-` for stdin), `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `-i` interactive, `--color`/`--no-color`. Recursive is on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
-2. **Config loading**: `config.py` discovers `pyproject.toml` walking up from CWD (or uses `--config PATH`), reads `[tool.octowrap]`, validates keys/types. Precedence: hardcoded defaults < config file < CLI args
+2. **Config loading**: `config.py` discovers `pyproject.toml` walking up from CWD (or uses `--config PATH`), reads `[tool.octowrap]`, validates keys/types. Supports `todo-patterns` (list, replaces defaults), `extend-todo-patterns` (list, adds to effective list), `todo-case-sensitive` (bool), `todo-multiline` (bool). Precedence: hardcoded defaults < config file < CLI args
 3. **Stdin mode**: when `-` is passed as the sole path, reads from stdin, rewraps via `process_content()`, and writes to stdout. Supports `--diff`, `--check`, and `-l`. Cannot be mixed with other paths or `-i`.
 4. **File discovery**: walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
 5. **Block parsing** (`parse_comment_blocks()`): groups consecutive same-indent comment lines into blocks, separating them from code
@@ -42,9 +42,11 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 7. **Preservation checks**: each comment is tested against heuristics:
    - `is_likely_code()`: 21 patterns detecting commented-out Python code
    - `is_divider()`: repeated-character separator lines
-   - `is_list_item()`: bullets, numbered items, special markers
+   - `is_list_item()`: bullets, numbered items
    - `is_tool_directive()`: tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, PEP 484 type comments)
-8. **Rewrapping** (`rewrap_comment_block()`): uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars)
+   - `is_todo_marker()`: detects TODO/FIXME-style markers (configurable patterns, case-insensitive by default, no colon required)
+   - `is_todo_continuation()`: detects one-space-indented continuation lines for multi-line TODOs
+8. **Rewrapping** (`rewrap_comment_block()`): uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars). TODO markers are rewrapped with their marker prefix on the first line and one-space continuation indent on subsequent lines.
 9. **Output**: interactive per block approval (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit) with colorized diffs showing the relative filepath, or batch mode. The `e` action wraps the original block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it. Quitting stops all processing, including remaining files in a multi file run.
 
 ### Key functions

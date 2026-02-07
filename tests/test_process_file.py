@@ -502,6 +502,66 @@ class TestRelativePath:
         assert result == target
 
 
+class TestTodoIntegration:
+    """Integration tests for TODO rewrap through process_content."""
+
+    def test_todo_rewrapped_in_content(self):
+        content = "# TODO: This is a very long todo item that definitely exceeds the eighty-eight character line length limit and should be rewrapped\nx = 1\n"
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        lines = result.splitlines()
+        assert lines[0].startswith("# TODO: ")
+        assert all(len(line) <= 88 for line in lines)
+
+    def test_todo_multiline_in_content(self):
+        content = (
+            "# TODO: First line of the todo\n#  continuation of the todo item\nx = 1\n"
+        )
+        changed, result = process_content(content, max_line_length=88)
+        lines = result.splitlines()
+        assert lines[0].startswith("# TODO: ")
+        full = " ".join(line.lstrip("# ") for line in lines if line.startswith("#"))
+        assert "First line" in full
+        assert "continuation" in full
+
+    def test_todo_with_custom_patterns_via_kwarg(self):
+        content = "# NOTE: This is a long note that exceeds the line length limit and should be rewrapped as a todo-style marker\nx = 1\n"
+        changed, result = process_content(
+            content, max_line_length=88, todo_patterns=["note"]
+        )
+        assert changed
+        lines = result.splitlines()
+        assert lines[0].startswith("# NOTE: ")
+
+    def test_empty_patterns_disables_todo(self):
+        content = "# TODO: short\nx = 1\n"
+        _, result = process_content(content, max_line_length=88, todo_patterns=[])
+        assert "# TODO: short" in result
+
+    def test_todo_rewrap_through_process_file(self, tmp_path):
+        f = tmp_path / "t.py"
+        f.write_bytes(
+            b"# TODO: This is a very long todo item that definitely exceeds the eighty-eight character line length limit and should be rewrapped\nx = 1\n"
+        )
+        changed, content = process_file(f, max_line_length=88)
+        assert changed
+        lines = content.splitlines()
+        assert lines[0].startswith("# TODO: ")
+        assert all(len(line) <= 88 for line in lines)
+
+    def test_todo_case_sensitive_through_process_file(self, tmp_path):
+        f = tmp_path / "t.py"
+        f.write_bytes(
+            b"# todo: this is a long comment that exceeds the line length and will be rewrapped as regular prose in sensitive mode\nx = 1\n"
+        )
+        changed, content = process_file(f, max_line_length=88, todo_case_sensitive=True)
+        assert changed
+        lines = content.splitlines()
+        # In case-sensitive mode, lowercase 'todo' is regular prose, not a marker It
+        # should still be rewrapped, just not with marker-style continuation
+        assert lines[0].startswith("# todo: ")
+
+
 class TestInteractiveFilepath:
     def test_diff_header_shows_relative_path(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
