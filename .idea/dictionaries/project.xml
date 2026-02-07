@@ -10,12 +10,14 @@
       <w>mhello</w>
       <w>mtitle</w>
       <w>octowrap</w>
+      <w>octowrap's</w>
       <w>rewrappable</w>
       <w>skipif</w>
       <w>tcgetattr</w>
       <w>tcsadrain</w>
       <w>tcsetattr</w>
       <w>termios</w>
+      <w>xclude</w>
     </words>
   </dictionary>
 </component>

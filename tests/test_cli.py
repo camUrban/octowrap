@@ -108,6 +108,21 @@ class TestMain:
         out = capsys.readouterr().out
         assert "2 file(s) reformatted." in out
 
+    def test_quit_stops_remaining_files(self, tmp_path, monkeypatch, capsys):
+        """Pressing quit during interactive mode skips all remaining files."""
+        a = tmp_path / "a.py"
+        a.write_bytes(WRAPPABLE_CONTENT)
+        b = tmp_path / "b.py"
+        b.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(a), str(b)])
+        main()
+        out = capsys.readouterr().out
+        # First file is processed (user quits within it), second is skipped entirely
+        assert "0 file(s) reformatted." in out
+        # b.py should be untouched on disk
+        assert b.read_bytes() == WRAPPABLE_CONTENT
+
     def test_error_handling(self, tmp_path, monkeypatch, capsys):
         """A file that can't be processed should log an error and continue."""
         good = tmp_path / "good.py"
@@ -262,6 +277,84 @@ class TestConfigIntegration:
         main()
         out = capsys.readouterr().out
         assert "1 file(s) reformatted." in out
+
+    def test_config_todo_patterns_replaces_defaults(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Config todo-patterns replaces the default TODO/FIXME patterns."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\ntodo-patterns = ["note"]\n'
+        )
+        f = tmp_path / "a.py"
+        # NOTE should now be treated as a TODO marker and rewrapped
+        f.write_bytes(
+            b"# NOTE: This is a long note that exceeds the line length and should be rewrapped as a todo-style marker item\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        assert lines[0].startswith("# NOTE: ")
+        # TODO should NOT be treated as a marker since defaults are replaced
+        f2 = tmp_path / "b.py"
+        f2.write_bytes(b"# TODO: short\nx = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f2)])
+        main()
+        assert "# TODO: short" in f2.read_text()
+
+    def test_config_empty_todo_patterns_ignores_extend(self, tmp_path, monkeypatch):
+        """An explicit empty todo-patterns disables TODO detection entirely."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\ntodo-patterns = []\nextend-todo-patterns = ["note"]\n'
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# TODO: This is a long todo that exceeds the line length and should be rewrapped as a normal prose comment now\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        # TODO should NOT be treated as a marker — continuation lines should use
+        # prose style ("# ") not TODO continuation style ("#  ")
+        assert len(lines) > 2  # Should be rewrapped across multiple lines
+        assert lines[1].startswith("# ") and not lines[1].startswith("#  ")
+
+    def test_config_todo_patterns_with_extend(self, tmp_path, monkeypatch):
+        """Both todo-patterns and extend-todo-patterns combine when non-empty."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\ntodo-patterns = ["note"]\nextend-todo-patterns = ["hack"]\n'
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# HACK: This is a long hack comment that exceeds the line length and should be rewrapped as a todo-style marker item\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        # HACK should be treated as a marker via extend-todo-patterns
+        assert lines[0].startswith("# HACK: ")
+        assert lines[1].startswith("#  ")
+
+    def test_config_extend_todo_patterns(self, tmp_path, monkeypatch, capsys):
+        """Config extend-todo-patterns adds to the default patterns."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\nextend-todo-patterns = ["note"]\n'
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# NOTE: This is a long note that exceeds the line length and should be rewrapped as a todo-style marker item\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        assert lines[0].startswith("# NOTE: ")
 
 
 class TestConfigFlag:
@@ -529,6 +622,26 @@ class TestStdinMode:
         out = capsys.readouterr().out
         assert "--- <stdin>" in out
         assert "+++ <stdin>" in out
+
+    def test_stdin_diff_check_dirty(self, monkeypatch, capsys):
+        """--diff --check with dirty input shows diff and exits 1."""
+        src = "# This is a comment that was wrapped\n# at a short width previously.\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff", "--check", "-"])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        out = capsys.readouterr().out
+        assert "--- <stdin>" in out
+        assert "+++ <stdin>" in out
+
+    def test_stdin_diff_check_clean(self, monkeypatch, capsys):
+        """--diff --check with clean input exits 0 with no output."""
+        monkeypatch.setattr("sys.stdin", io.StringIO("x = 1\n"))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff", "--check", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert out == ""
 
     def test_stdin_mixed_paths_error(self, monkeypatch, capsys):
         """Mixing '-' with other paths prints error and exits 1."""

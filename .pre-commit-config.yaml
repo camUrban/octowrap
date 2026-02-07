@@ -10,6 +10,11 @@ repos:
     - id: ruff-format
 - repo: local
   hooks:
+    - id: octowrap
+      name: octowrap
+      entry: octowrap
+      language: system
+      types: [python]
     # No official hook yet (https://github.com/astral-sh/ty/issues/269).
     - id: ty
       name: ty check

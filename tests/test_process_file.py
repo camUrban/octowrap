@@ -1,4 +1,14 @@
-from octowrap.rewrap import process_content, process_file
+import os
+from pathlib import Path
+
+import pytest
+
+from octowrap.rewrap import _relative_path, process_content, process_file
+
+
+def _raise_os_error(*_args, **_kwargs):
+    raise OSError("fake replace failure")
+
 
 # fmt: off
 WRAPPABLE_CONTENT = (
@@ -98,6 +108,49 @@ class TestProcessFile:
         assert changed
         assert f.read_bytes().decode() == content
 
+    def test_atomic_write_cleans_up_on_failure(self, tmp_path, monkeypatch):
+        """If os.replace fails, the temp file is removed and the original is intact."""
+        f = tmp_path / "t.py"
+        original = b"# This was wrapped at a very\n# short width before.\n"
+        f.write_bytes(original)
+
+        monkeypatch.setattr("os.replace", _raise_os_error)
+        with pytest.raises(OSError):
+            process_file(f, max_line_length=88)
+
+        # Original file should be untouched
+        assert f.read_bytes() == original
+        # No temp files left behind
+        assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_atomic_write_cleanup_failure_does_not_mask_error(
+        self, tmp_path, monkeypatch
+    ):
+        """If both os.replace and os.unlink fail, the original error propagates."""
+        f = tmp_path / "t.py"
+        f.write_bytes(b"# This was wrapped at a very\n# short width before.\n")
+
+        monkeypatch.setattr("os.replace", _raise_os_error)
+        monkeypatch.setattr("os.unlink", _raise_os_error)
+        with pytest.raises(OSError, match="fake replace failure"):
+            process_file(f, max_line_length=88)
+
+        assert (
+            f.read_bytes() == b"# This was wrapped at a very\n# short width before.\n"
+        )
+
+    def test_atomic_write_preserves_permissions(self, tmp_path):
+        """Atomic write should preserve the original file's permission bits."""
+        f = tmp_path / "perms.py"
+        f.write_bytes(b"# This was wrapped at a very\n# short width before.\n")
+        import stat
+
+        original_mode = stat.S_IMODE(f.stat().st_mode)
+        changed, _ = process_file(f, max_line_length=88)
+        assert changed
+        new_mode = stat.S_IMODE(f.stat().st_mode)
+        assert new_mode == original_mode
+
 
 class TestProcessFileInteractive:
     """Tests for the interactive path of process_file."""
@@ -133,6 +186,28 @@ class TestProcessFileInteractive:
         changed, content = process_file(f, max_line_length=88, interactive=True)
         # Both blocks should be unchanged since user quit on the first
         assert not changed
+
+    def test_quit_suppresses_diff_for_remaining_blocks(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """After quit, no diffs are shown for subsequent blocks."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        process_file(f, max_line_length=88, interactive=True)
+        out = capsys.readouterr().out
+        # Only the first block's diff should appear, not the second
+        assert "First block" in out
+        assert "Second block" not in out
 
     def test_accept_all_applies_remaining(self, tmp_path, monkeypatch):
         """Accept-all applies rewrapped content to all subsequent blocks."""
@@ -189,6 +264,73 @@ class TestProcessFileInteractive:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", should_not_be_called)
         process_file(f, max_line_length=88, interactive=True)
         assert not called
+
+    def test_exclude_wraps_block_with_pragmas(self, tmp_path, monkeypatch):
+        """Excluding a block wraps it with octowrap: off/on pragmas."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        changed, content = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        assert "# octowrap: off" in content
+        assert "# octowrap: on" in content
+
+    def test_exclude_adds_exactly_two_lines(self, tmp_path, monkeypatch):
+        """Excluding a block adds exactly two lines (the off/on pragmas)."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        original_line_count = WRAPPABLE_CONTENT.count(b"\n")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        assert content.count("\n") == original_line_count + 2
+
+    def test_exclude_preserves_indent(self, tmp_path, monkeypatch):
+        """Pragmas match the indentation of the excluded block."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"def foo():\n"
+            b"    # This is a comment that was wrapped\n"
+            b"    # at a short width previously.\n"
+        )
+        # fmt: on
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        assert "    # octowrap: off" in content
+        assert "    # octowrap: on" in content
+
+    def test_excluded_block_ignored_on_rerun(self, tmp_path, monkeypatch):
+        """Re-running on an excluded file produces no changes (idempotent)."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        process_file(f, max_line_length=88, interactive=True)
+        # Second run: no interactive prompt needed, nothing should change
+        changed, _ = process_file(f, max_line_length=88)
+        assert not changed
+
+    def test_exclude_then_accept(self, tmp_path, monkeypatch):
+        """Exclude on first block and accept on second works correctly."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        responses = iter(["e", "a"])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        changed, content = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        # First block should be wrapped with pragmas, original text preserved
+        assert "# octowrap: off" in content
+        assert "# First block that was wrapped\n" in content
+        assert "# octowrap: on" in content
+        # Second block should be rewrapped
+        assert "# Second block that was also wrapped at a short width." in content
 
 
 class TestToolDirectivePreservation:
@@ -368,3 +510,96 @@ class TestPragma:
         changed, result = process_content(content, max_line_length=88, interactive=True)
         assert not changed
         assert not called
+
+
+class TestRelativePath:
+    def test_path_inside_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        target = tmp_path / "sub" / "file.py"
+        result = _relative_path(target)
+        assert result == Path("sub") / "file.py"
+
+    def test_path_outside_cwd(self, tmp_path, monkeypatch):
+        # CWD is a subdirectory that doesn't contain the target
+        cwd = tmp_path / "a"
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        target = tmp_path / "b" / "file.py"
+        result = _relative_path(target)
+        # Should fall back to the original path unchanged
+        assert result == target
+
+
+class TestTodoIntegration:
+    """Integration tests for TODO rewrap through process_content."""
+
+    def test_todo_rewrapped_in_content(self):
+        content = "# TODO: This is a very long todo item that definitely exceeds the eighty-eight character line length limit and should be rewrapped\nx = 1\n"
+        changed, result = process_content(content, max_line_length=88)
+        assert changed
+        lines = result.splitlines()
+        assert lines[0].startswith("# TODO: ")
+        assert all(len(line) <= 88 for line in lines)
+
+    def test_todo_multiline_in_content(self):
+        content = (
+            "# TODO: First line of the todo\n#  continuation of the todo item\nx = 1\n"
+        )
+        changed, result = process_content(content, max_line_length=88)
+        lines = result.splitlines()
+        assert lines[0].startswith("# TODO: ")
+        full = " ".join(line.lstrip("# ") for line in lines if line.startswith("#"))
+        assert "First line" in full
+        assert "continuation" in full
+
+    def test_todo_with_custom_patterns_via_kwarg(self):
+        content = "# NOTE: This is a long note that exceeds the line length limit and should be rewrapped as a todo-style marker\nx = 1\n"
+        changed, result = process_content(
+            content, max_line_length=88, todo_patterns=["note"]
+        )
+        assert changed
+        lines = result.splitlines()
+        assert lines[0].startswith("# NOTE: ")
+
+    def test_empty_patterns_disables_todo(self):
+        content = "# TODO: short\nx = 1\n"
+        _, result = process_content(content, max_line_length=88, todo_patterns=[])
+        assert "# TODO: short" in result
+
+    def test_todo_rewrap_through_process_file(self, tmp_path):
+        f = tmp_path / "t.py"
+        f.write_bytes(
+            b"# TODO: This is a very long todo item that definitely exceeds the eighty-eight character line length limit and should be rewrapped\nx = 1\n"
+        )
+        changed, content = process_file(f, max_line_length=88)
+        assert changed
+        lines = content.splitlines()
+        assert lines[0].startswith("# TODO: ")
+        assert all(len(line) <= 88 for line in lines)
+
+    def test_todo_case_sensitive_through_process_file(self, tmp_path):
+        f = tmp_path / "t.py"
+        f.write_bytes(
+            b"# todo: this is a long comment that exceeds the line length and will be rewrapped as regular prose in sensitive mode\nx = 1\n"
+        )
+        changed, content = process_file(f, max_line_length=88, todo_case_sensitive=True)
+        assert changed
+        lines = content.splitlines()
+        # In case-sensitive mode, lowercase 'todo' is regular prose, not a marker It
+        # should still be rewrapped, just not with marker-style continuation
+        assert lines[0].startswith("# todo: ")
+
+
+class TestInteractiveFilepath:
+    def test_diff_header_shows_relative_path(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        sub = tmp_path / "pkg"
+        sub.mkdir()
+        f = sub / "mod.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        process_file(f, max_line_length=88, interactive=True)
+        out = capsys.readouterr().out
+        expected = os.path.join("pkg", "mod.py")
+        assert expected in out

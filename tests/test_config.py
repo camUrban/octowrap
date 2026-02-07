@@ -65,8 +65,8 @@ class TestLoadConfig:
 
     def test_no_file_returns_empty(self):
         result = load_config(None)
-        # find_config_file may return None when CWD has no pyproject.toml;
-        # in that case load_config falls through to an empty dict.
+        # find_config_file may return None when CWD has no pyproject.toml; in that case
+        # load_config falls through to an empty dict.
         assert isinstance(result, dict)
 
     def test_unknown_key_raises(self, tmp_path):
@@ -114,4 +114,55 @@ class TestLoadConfig:
     def test_extend_exclude_non_string_element_raises(self, tmp_path):
         _write_pyproject(tmp_path, b'[tool.octowrap]\nextend-exclude = ["ok", true]\n')
         with pytest.raises(ConfigError, match="element 1 is bool"):
+            load_config(tmp_path / "pyproject.toml")
+
+    # --- TODO config keys ---
+
+    def test_loads_todo_patterns(self, tmp_path):
+        _write_pyproject(
+            tmp_path, b'[tool.octowrap]\ntodo-patterns = ["todo", "note"]\n'
+        )
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"todo-patterns": ["todo", "note"]}
+
+    def test_loads_extend_todo_patterns(self, tmp_path):
+        _write_pyproject(
+            tmp_path, b'[tool.octowrap]\nextend-todo-patterns = ["hack"]\n'
+        )
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"extend-todo-patterns": ["hack"]}
+
+    def test_loads_todo_case_sensitive(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\ntodo-case-sensitive = true\n")
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"todo-case-sensitive": True}
+
+    def test_loads_todo_multiline(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\ntodo-multiline = false\n")
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"todo-multiline": False}
+
+    def test_todo_patterns_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\ntodo-patterns = "not-a-list"\n')
+        with pytest.raises(ConfigError, match="expects a list of strings"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_todo_patterns_non_string_element_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\ntodo-patterns = [1, 2]\n")
+        with pytest.raises(ConfigError, match="element 0 is int"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_extend_todo_patterns_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\nextend-todo-patterns = 42\n")
+        with pytest.raises(ConfigError, match="expects a list of strings"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_todo_case_sensitive_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\ntodo-case-sensitive = "yes"\n')
+        with pytest.raises(ConfigError, match="expects bool"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_todo_multiline_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\ntodo-multiline = "yes"\n')
+        with pytest.raises(ConfigError, match="expects bool"):
             load_config(tmp_path / "pyproject.toml")

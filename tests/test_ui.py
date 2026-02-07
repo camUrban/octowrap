@@ -70,6 +70,30 @@ class TestShowBlockDiff:
         # start_line is 0 indexed, display is 1 indexed
         assert "Lines 10-10:" in out
 
+    def test_output_contains_filepath(self, capsys):
+        original = ["# a"]
+        new = ["# b"]
+        show_block_diff(original, new, 0, filepath="src/example.py")
+        out = capsys.readouterr().out
+        assert "src/example.py" in out
+        assert "Lines 1-1:" in out
+
+    def test_no_filepath_omits_prefix(self, capsys):
+        original = ["# a"]
+        new = ["# b"]
+        show_block_diff(original, new, 0)
+        out = capsys.readouterr().out
+        assert out.startswith("\n") or "Lines 1-1:" in out
+        # Should not have a path prefix before "Lines"
+        for line in out.splitlines():
+            if "Lines" in line:
+                stripped = line.lstrip()
+                # Remove ANSI codes for comparison
+                import re
+
+                clean = re.sub(r"\033\[[0-9;]*m", "", stripped)
+                assert clean.startswith("Lines")
+
 
 class TestGetch:
     """Tests for _getch(), the platform specific single keypress reader.
@@ -175,3 +199,11 @@ class TestPromptUser:
 
         monkeypatch.setattr(mod, "_getch", raise_interrupt)
         assert prompt_user() == "q"
+
+    def test_exclude(self, monkeypatch):
+        monkeypatch.setattr(mod, "_getch", lambda: "e")
+        assert prompt_user() == "e"
+
+    def test_exclude_uppercase(self, monkeypatch):
+        monkeypatch.setattr(mod, "_getch", lambda: "E")
+        assert prompt_user() == "e"
