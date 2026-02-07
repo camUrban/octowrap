@@ -14,6 +14,7 @@ import difflib
 import fnmatch
 import os
 import re
+import stat
 import sys
 import tempfile
 import textwrap
@@ -678,7 +679,7 @@ def process_file(
     )
 
     if changed and not dry_run:
-        original_mode = os.stat(filepath).st_mode
+        original_mode = stat.S_IMODE(os.stat(filepath).st_mode)
         tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
         try:
             with open(tmp_fd, "w", newline="") as f:
@@ -686,7 +687,10 @@ def process_file(
             os.chmod(tmp_path, original_mode)
             os.replace(tmp_path, filepath)
         except BaseException:
-            os.unlink(tmp_path)
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
             raise
 
     return changed, new_content
@@ -794,7 +798,13 @@ def main():
     todo_patterns: list[str] = list(DEFAULT_TODO_PATTERNS)
     if "todo-patterns" in config:
         todo_patterns = config["todo-patterns"]
-    if "extend-todo-patterns" in config:
+        if not todo_patterns:
+            # Explicit empty list disables TODO detection entirely; ignore extend-todo-
+            # patterns.
+            pass
+        elif "extend-todo-patterns" in config:
+            todo_patterns = todo_patterns + config["extend-todo-patterns"]
+    elif "extend-todo-patterns" in config:
         todo_patterns = todo_patterns + config["extend-todo-patterns"]
     todo_case_sensitive = config.get("todo-case-sensitive", DEFAULT_TODO_CASE_SENSITIVE)
     todo_multiline = config.get("todo-multiline", DEFAULT_TODO_MULTILINE)

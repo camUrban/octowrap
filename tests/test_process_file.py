@@ -123,6 +123,34 @@ class TestProcessFile:
         # No temp files left behind
         assert list(tmp_path.glob("*.tmp")) == []
 
+    def test_atomic_write_cleanup_failure_does_not_mask_error(
+        self, tmp_path, monkeypatch
+    ):
+        """If both os.replace and os.unlink fail, the original error propagates."""
+        f = tmp_path / "t.py"
+        f.write_bytes(b"# This was wrapped at a very\n# short width before.\n")
+
+        monkeypatch.setattr("os.replace", _raise_os_error)
+        monkeypatch.setattr("os.unlink", _raise_os_error)
+        with pytest.raises(OSError, match="fake replace failure"):
+            process_file(f, max_line_length=88)
+
+        assert (
+            f.read_bytes() == b"# This was wrapped at a very\n# short width before.\n"
+        )
+
+    def test_atomic_write_preserves_permissions(self, tmp_path):
+        """Atomic write should preserve the original file's permission bits."""
+        f = tmp_path / "perms.py"
+        f.write_bytes(b"# This was wrapped at a very\n# short width before.\n")
+        import stat
+
+        original_mode = stat.S_IMODE(f.stat().st_mode)
+        changed, _ = process_file(f, max_line_length=88)
+        assert changed
+        new_mode = stat.S_IMODE(f.stat().st_mode)
+        assert new_mode == original_mode
+
 
 class TestProcessFileInteractive:
     """Tests for the interactive path of process_file."""

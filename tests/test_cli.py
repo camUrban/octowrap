@@ -303,6 +303,43 @@ class TestConfigIntegration:
         main()
         assert "# TODO: short" in f2.read_text()
 
+    def test_config_empty_todo_patterns_ignores_extend(self, tmp_path, monkeypatch):
+        """An explicit empty todo-patterns disables TODO detection entirely."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\ntodo-patterns = []\nextend-todo-patterns = ["note"]\n'
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# TODO: This is a long todo that exceeds the line length and should be rewrapped as a normal prose comment now\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        # TODO should NOT be treated as a marker — continuation lines should use
+        # prose style ("# ") not TODO continuation style ("#  ")
+        assert len(lines) > 2  # Should be rewrapped across multiple lines
+        assert lines[1].startswith("# ") and not lines[1].startswith("#  ")
+
+    def test_config_todo_patterns_with_extend(self, tmp_path, monkeypatch):
+        """Both todo-patterns and extend-todo-patterns combine when non-empty."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\ntodo-patterns = ["note"]\nextend-todo-patterns = ["hack"]\n'
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(
+            b"# HACK: This is a long hack comment that exceeds the line length and should be rewrapped as a todo-style marker item\nx = 1\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        content = f.read_text()
+        lines = content.splitlines()
+        # HACK should be treated as a marker via extend-todo-patterns
+        assert lines[0].startswith("# HACK: ")
+        assert lines[1].startswith("#  ")
+
     def test_config_extend_todo_patterns(self, tmp_path, monkeypatch, capsys):
         """Config extend-todo-patterns adds to the default patterns."""
         (tmp_path / "pyproject.toml").write_text(
