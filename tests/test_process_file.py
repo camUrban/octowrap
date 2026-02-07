@@ -134,6 +134,28 @@ class TestProcessFileInteractive:
         # Both blocks should be unchanged since user quit on the first
         assert not changed
 
+    def test_quit_suppresses_diff_for_remaining_blocks(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """After quit, no diffs are shown for subsequent blocks."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        process_file(f, max_line_length=88, interactive=True)
+        out = capsys.readouterr().out
+        # Only the first block's diff should appear, not the second
+        assert "First block" in out
+        assert "Second block" not in out
+
     def test_accept_all_applies_remaining(self, tmp_path, monkeypatch):
         """Accept-all applies rewrapped content to all subsequent blocks."""
         f = tmp_path / "t.py"

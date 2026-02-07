@@ -374,10 +374,12 @@ def process_content(
     content: str,
     max_line_length: int = 88,
     interactive: bool = False,
+    _state: dict | None = None,
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
-    Returns (changed, new_content).
+    Returns (changed, new_content).  When *_state* is a dict and the user
+    presses quit in interactive mode, ``_state["quit"]`` is set to ``True``.
     """
     lines = content.splitlines(keepends=True)
 
@@ -456,9 +458,11 @@ def process_content(
         elif accept_all:
             new_lines.extend(rewrapped)
         else:
-            has_changes = show_block_diff(block["lines"], rewrapped, block["start_idx"])
+            has_changes = not user_quit and show_block_diff(
+                block["lines"], rewrapped, block["start_idx"]
+            )
 
-            if has_changes and not user_quit:
+            if has_changes:
                 action = prompt_user()
 
                 if action == "A":
@@ -473,6 +477,8 @@ def process_content(
                     new_lines.append(f"{indent}# octowrap: on")
                 elif action == "q":
                     user_quit = True
+                    if _state is not None:
+                        _state["quit"] = True
                     new_lines.extend(block["lines"])
                 else:  # skip
                     new_lines.extend(block["lines"])
@@ -501,6 +507,7 @@ def process_file(
     max_line_length: int = 88,
     dry_run: bool = False,
     interactive: bool = False,
+    _state: dict | None = None,
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
@@ -510,7 +517,10 @@ def process_file(
         content = f.read()
 
     changed, new_content = process_content(
-        content, max_line_length, interactive=interactive and not dry_run
+        content,
+        max_line_length,
+        interactive=interactive and not dry_run,
+        _state=_state,
     )
 
     if changed and not dry_run:
@@ -674,6 +684,7 @@ def main():
             print(f"Warning: {path} not found, skipping")
 
     changed_count = 0
+    interactive_state: dict = {}
     for filepath in files_to_process:
         try:
             original: str | None = filepath.read_text() if args.diff else None
@@ -682,6 +693,7 @@ def main():
                 args.line_length,
                 dry_run=args.dry_run,
                 interactive=args.interactive,
+                _state=interactive_state,
             )
 
             if changed:
@@ -702,6 +714,9 @@ def main():
                     print(f"Reformatted: {filepath}")
         except Exception as e:
             print(f"Error processing {filepath}: {e}")
+
+        if interactive_state.get("quit"):
+            break
 
     action = "would be reformatted" if args.dry_run else "reformatted"
     print(f"\n{changed_count} file(s) {action}.")

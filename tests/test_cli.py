@@ -108,6 +108,21 @@ class TestMain:
         out = capsys.readouterr().out
         assert "2 file(s) reformatted." in out
 
+    def test_quit_stops_remaining_files(self, tmp_path, monkeypatch, capsys):
+        """Pressing quit during interactive mode skips all remaining files."""
+        a = tmp_path / "a.py"
+        a.write_bytes(WRAPPABLE_CONTENT)
+        b = tmp_path / "b.py"
+        b.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(a), str(b)])
+        main()
+        out = capsys.readouterr().out
+        # First file is processed (user quits within it), second is skipped entirely
+        assert "0 file(s) reformatted." in out
+        # b.py should be untouched on disk
+        assert b.read_bytes() == WRAPPABLE_CONTENT
+
     def test_error_handling(self, tmp_path, monkeypatch, capsys):
         """A file that can't be processed should log an error and continue."""
         good = tmp_path / "good.py"
