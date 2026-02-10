@@ -125,7 +125,7 @@ class TestMain:
         assert b.read_bytes() == WRAPPABLE_CONTENT
 
     def test_error_handling(self, tmp_path, monkeypatch, capsys):
-        """A file that can't be processed should log an error and continue."""
+        """A file that can't be processed should log an error and exit non-zero."""
         good = tmp_path / "good.py"
         good.write_bytes(WRAPPABLE_CONTENT)
         bad = tmp_path / "bad.py"
@@ -140,10 +140,12 @@ class TestMain:
 
         monkeypatch.setattr(mod, "process_file", failing_process_file)
         monkeypatch.setattr("sys.argv", ["octowrap", str(good), str(bad)])
-        main()
-        out = capsys.readouterr().out
-        assert "Error processing" in out
-        assert "fake read error" in out
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "error: Failed to process" in err
+        assert "fake read error" in err
 
 
 class TestEntryPoints:

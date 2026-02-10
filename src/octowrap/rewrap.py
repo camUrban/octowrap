@@ -960,6 +960,7 @@ def main():
             print(f"Warning: {path} not found, skipping")
 
     changed_count = 0
+    error_count = 0
     interactive_state: dict = {}
     for filepath in files_to_process:
         try:
@@ -994,7 +995,8 @@ def main():
                 else:
                     print(f"Reformatted: {filepath}")
         except Exception as e:
-            print(f"Error processing {filepath}: {e}")
+            print(f"error: Failed to process {filepath}: {e}", file=sys.stderr)
+            error_count += 1
 
         if interactive_state.get("quit"):
             break
@@ -1002,6 +1004,8 @@ def main():
     action = "would be reformatted" if args.dry_run else "reformatted"
     print(f"\n{changed_count} file(s) {action}.")
 
+    if error_count > 0:
+        raise SystemExit(2)
     if args.check and changed_count > 0:
         raise SystemExit(1)
 

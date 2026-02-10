@@ -157,6 +157,16 @@ Add octowrap to your `.pre-commit-config.yaml`:
       # args: [--check]        # fail without modifying (useful for CI)
 ```
 
+## Exit Codes
+
+| Code | Meaning                                                                      |
+|------|------------------------------------------------------------------------------|
+| 0    | Success (no changes needed, or changes applied)                              |
+| 1    | `--check` mode: files would be reformatted                                   |
+| 2    | Error processing one or more files (e.g., encoding error, permission denied) |
+
+Errors are printed to stderr. This behavior matches ruff.
+
 ## GitHub Actions
 
 Use `--check` in CI to fail if any comments would be rewrapped:
@@ -194,7 +204,7 @@ extend-exclude = ["vendor"]
 
 CLI flags always take precedence over config values. Use `--config PATH` to point to a specific `pyproject.toml` instead of relying on auto-discovery.
 
-`exclude` replaces the built-in default exclude list entirely. `extend-exclude` adds patterns to the defaults (or to `exclude` if set). Default excludes: `.git`, `.hg`, `.svn`, `.bzr`, `.venv`, `venv`, `.tox`, `.nox`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `__pycache__`, `__pypackages__`, `_build`, `build`, `dist`, `node_modules`, `.eggs`. Patterns are matched against individual path components using `fnmatch`.
+`exclude` replaces the built-in default exclude list entirely. `extend-exclude` adds patterns to the defaults (or to `exclude` if set). Default excludes: `.git`, `.hg`, `.svn`, `.bzr`, `.venv`, `venv`, `.tox`, `.nox`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `__pycache__`, `__pypackages__`, `_build`, `build`, `dist`, `node_modules`, `.eggs`. Patterns are matched against individual folder or file names using `fnmatch`, not full paths. For example, `"vendor"` excludes any folder named `vendor` anywhere in the tree, while `"docs/vendor"` would never match (use `"vendor"` instead). Glob wildcards work: `"test_*"` excludes any folder starting with `test_`.
 
 `todo-patterns` replaces the default TODO marker patterns (`["todo", "fixme"]`). `extend-todo-patterns` adds to the effective list. Both can be combined. Setting `todo-patterns = []` disables TODO detection entirely.
 

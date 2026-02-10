@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- File processing errors now print to stderr (instead of stdout) and cause exit code 2, matching ruff's behavior
+- Malformed `pyproject.toml` files now raise an error instead of being silently skipped during config discovery
+
 ## 0.3.1 - 2026-02-09
 
 ### Added

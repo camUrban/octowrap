@@ -28,8 +28,8 @@ VALID_KEYS: set[str] = {*_SCALAR_KEYS, *_LIST_STR_KEYS}
 def find_config_file(start_dir: Path | None = None) -> Path | None:
     """Walk up from *start_dir* looking for a pyproject.toml with [tool.octowrap].
 
-    Returns the path to the first matching file, or ``None``. Malformed TOML files are
-    silently skipped.
+    Returns the path to the first matching file, or ``None``. Raises
+    :class:`ConfigError` if a pyproject.toml file exists but contains malformed TOML.
     """
     if start_dir is None:
         start_dir = Path.cwd()
@@ -43,8 +43,8 @@ def find_config_file(start_dir: Path | None = None) -> Path | None:
                     data = tomllib.load(f)
                 if "tool" in data and "octowrap" in data["tool"]:
                     return candidate
-            except tomllib.TOMLDecodeError:
-                pass
+            except tomllib.TOMLDecodeError as e:
+                raise ConfigError(f"Failed to parse {candidate}: {e}") from e
         parent = current.parent
         if parent == current:
             break
