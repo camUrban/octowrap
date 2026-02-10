@@ -924,6 +924,66 @@ class TestInteractiveProgress:
         assert "[1/1]" in out
 
 
+class TestNoInlineFlag:
+    """Tests for the --no-inline CLI flag."""
+
+    # fmt: off
+    INLINE_CONTENT = (
+        b"x = some_really_long_function_call(arg1, arg2)"
+        b"  # This comment pushes the line way past the limit\n"
+    )
+    # fmt: on
+
+    def test_no_inline_flag_disables_extraction(self, tmp_path, monkeypatch, capsys):
+        """With --no-inline, overflowing inline comments are not extracted."""
+        f = tmp_path / "a.py"
+        f.write_bytes(self.INLINE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--no-inline", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "0 file(s) reformatted." in out
+
+    def test_default_extracts_inline(self, tmp_path, monkeypatch, capsys):
+        """By default (no --no-inline), overflowing inline comments are extracted."""
+        f = tmp_path / "a.py"
+        f.write_bytes(self.INLINE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "1 file(s) reformatted." in out
+
+    def test_config_inline_false(self, tmp_path, monkeypatch, capsys):
+        """Config inline = false disables extraction."""
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\ninline = false\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(self.INLINE_CONTENT)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "0 file(s) reformatted." in out
+
+    def test_no_inline_stdin(self, monkeypatch, capsys):
+        """--no-inline works in stdin mode too."""
+        src = "x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--no-inline", "-"])
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert out == src
+
+    def test_inline_progress_counts(self, tmp_path, monkeypatch, capsys):
+        """Interactive progress indicator counts inline extractions."""
+        f = tmp_path / "a.py"
+        f.write_bytes(self.INLINE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        assert "[1/1]" in out
+
+
 class TestDiffUtf8:
     """Tests for UTF-8 handling in diff mode."""
 

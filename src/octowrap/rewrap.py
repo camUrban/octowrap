@@ -4,7 +4,7 @@ This script identifies contiguous blocks of # comments at the same indentation l
 rewraps them using textwrap. It preserves:
 - Commented out code (heuristic detection)
 - Section dividers (lines of repeated characters like # ---- or # ====)
-- Inline comments (# after code on the same line)
+- Short inline comments (# after code on the same line, within line length)
 - Intentional short lines and blank comment lines
 - Lists and bullet points
 """
@@ -21,15 +21,6 @@ import textwrap
 from pathlib import Path
 
 from octowrap.config import ConfigError, find_config_file, load_config
-
-# Platform specific imports for single keypress input (_getch). msvcrt is Windows only;
-# termios/tty are Unix only. The type: ignore comments suppress errors from type
-# checkers that cannot resolve modules only available on the other platform.
-if sys.platform == "win32":  # pragma: no cover
-    import msvcrt  # noqa: F401
-else:  # pragma: no cover
-    import termios  # noqa: F401
-    import tty  # noqa: F401
 
 DEFAULT_EXCLUDES: list[str] = [
     ".git",
@@ -156,6 +147,84 @@ def is_tool_directive(text: str) -> bool:
     ]
     stripped = text.strip()
     return any(re.match(p, stripped) for p in directive_patterns)
+
+
+def find_inline_comment(line: str) -> int | None:
+    """Return the index of the ``#`` that starts an inline comment, or ``None``.
+
+    Walks the line character-by-character, tracking string state (single, double, and
+    # `` characters inside string literals
+    triple quotes plus backslash escapes) so that ``
+    # `` is a full-line comment (only whitespace
+    are ignored.  Returns ``None`` when the ``
+    before it) or when no ``#`` exists outside strings.
+
+    .. note::
+
+       This function does **not** track multi-line string state across lines, matching
+       the limitation of the existing block parser.
+    """
+    in_string: str | None = None  # None, or the quote character(s) (' / " / ''' / """)
+    i = 0
+    length = len(line)
+
+    while i < length:
+        ch = line[i]
+
+        if in_string is not None:
+            # Inside a string literal — look for the closing delimiter or escape.
+            if ch == "\\" and i + 1 < length:
+                i += 2  # skip escaped character
+                continue
+            if line[i:].startswith(in_string):
+                i += len(in_string)
+                in_string = None
+                continue
+            i += 1
+            continue
+
+        # Outside any string literal.
+        if ch in ("'", '"'):
+            # Check for triple-quote first.
+            triple = ch * 3
+            if line[i:].startswith(triple):
+                in_string = triple
+                i += 3
+            else:
+                in_string = ch
+                i += 1
+            continue
+
+        if ch == "#":
+            # Only treat as inline if there is non-whitespace code before it.
+            prefix = line[:i]
+            if prefix.strip():
+                return i
+            return None  # full-line comment
+
+        i += 1
+
+    return None
+
+
+def extract_inline_comment(line: str) -> tuple[str, str] | None:
+    """Split *line* into ``(code_part, comment_text)`` if it has an inline comment.
+
+    Returns ``None`` when *line* has no inline comment.  The *code_part* has trailing
+    whitespace stripped.  The *comment_text* is everything after the ``# `` prefix
+    (leading hash-and-space removed).
+    """
+    idx = find_inline_comment(line)
+    if idx is None:
+        return None
+    code_part = line[:idx].rstrip()
+    raw_comment = line[idx + 1 :]  # everything after the '#'
+    # Strip one optional leading space (standard "# comment" style).
+    if raw_comment.startswith(" "):
+        comment_text = raw_comment[1:]
+    else:
+        comment_text = raw_comment
+    return code_part, comment_text
 
 
 def is_todo_marker(
@@ -446,18 +515,31 @@ def rewrap_comment_block(
     return result
 
 
+def _should_extract_inline(line: str, max_line_length: int) -> bool:
+    """Return ``True`` if *line* has an inline comment that should be extracted."""
+    if len(line) <= max_line_length:
+        return False
+    result = extract_inline_comment(line)
+    if result is None:
+        return False
+    _, comment_text = result
+    return not is_tool_directive(comment_text)
+
+
 def count_changed_blocks(
     content: str,
     max_line_length: int = 88,
     todo_patterns: list[str] | None = None,
     todo_case_sensitive: bool = False,
     todo_multiline: bool = True,
+    inline: bool = True,
 ) -> int:
     """Count comment blocks that will be interactively prompted.
 
     Only counts non-pragma blocks whose rewrapped output differs from the original.
     Pragma blocks are auto-applied in ``process_content()`` (never prompted), so they
-    are traversed here solely to track the ``disabled`` state.
+    are traversed here solely to track the ``disabled`` state.  When *inline* is
+    ``True``, overflowing inline comments also contribute to the count.
     """
     lines_stripped = [line.rstrip("\n\r") for line in content.splitlines(keepends=True)]
     blocks = parse_comment_blocks(lines_stripped)
@@ -466,6 +548,10 @@ def count_changed_blocks(
 
     for block in blocks:
         if block["type"] == "code":
+            if not disabled and inline:
+                for line in block["lines"]:
+                    if _should_extract_inline(line, max_line_length):
+                        count += 1
             continue
 
         has_pragma = any(parse_pragma(bline) is not None for bline in block["lines"])
@@ -551,18 +637,23 @@ def _getch() -> str:
     """Read a single character without waiting for Enter.
 
     Uses platform specific APIs (msvcrt on Windows, termios/tty on Unix), imported
-    conditionally at module level.
+    locally to avoid cross-platform resolution issues.
     """
     if sys.platform == "win32":
+        import msvcrt
+
         return msvcrt.getwch()
 
+    import termios
+    import tty
+
     fd = sys.stdin.fileno()
-    old = termios.tcgetattr(fd)  # type: ignore[possibly-unbound]
+    old = termios.tcgetattr(fd)
     try:
-        tty.setcbreak(fd)  # type: ignore[possibly-unbound]
+        tty.setcbreak(fd)
         return sys.stdin.read(1)
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old)  # type: ignore[possibly-unbound]
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
 def prompt_user() -> str:
@@ -606,6 +697,7 @@ def process_content(
     todo_patterns: list[str] | None = None,
     todo_case_sensitive: bool = False,
     todo_multiline: bool = True,
+    inline: bool = True,
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
@@ -626,7 +718,97 @@ def process_content(
 
     for block in blocks:
         if block["type"] == "code":
-            new_lines.extend(block["lines"])
+            if not disabled and inline:
+                for line_idx, line in enumerate(block["lines"]):
+                    if user_quit or not _should_extract_inline(line, max_line_length):
+                        new_lines.append(line)
+                        continue
+
+                    # Extract the inline comment and build replacement lines.
+                    code_part, comment_text = extract_inline_comment(line)  # type: ignore[misc]
+                    indent = " " * (len(line) - len(line.lstrip()))
+                    synthetic = {
+                        "type": "comment_block",
+                        "lines": [f"{indent}# {comment_text}"],
+                        "indent": indent,
+                        "start_idx": block["start_idx"] + line_idx,
+                    }
+                    wrapped_comment = rewrap_comment_block(
+                        synthetic,
+                        max_line_length,
+                        todo_patterns=todo_patterns,
+                        todo_case_sensitive=todo_case_sensitive,
+                        todo_multiline=todo_multiline,
+                    )
+                    replacement = wrapped_comment + [code_part]
+
+                    if not interactive:
+                        new_lines.extend(replacement)
+                    elif accept_all:
+                        new_lines.extend(replacement)
+                    else:
+                        progress = ""
+                        if (
+                            _state is not None
+                            and "block_total" in _state
+                            and _state["block_total"] > 0
+                        ):
+                            _state["block_current"] = _state.get("block_current", 0) + 1
+                            progress = (
+                                f"[{_state['block_current']}/{_state['block_total']}]"
+                            )
+
+                        has_changes = show_block_diff(
+                            [line],
+                            replacement,
+                            block["start_idx"] + line_idx,
+                            filepath=filepath,
+                            progress=progress,
+                        )
+
+                        if has_changes:
+                            action = prompt_user()
+
+                            if action == "A":
+                                accept_all = True
+                                new_lines.extend(replacement)
+                            elif action == "a":
+                                new_lines.extend(replacement)
+                            elif action == "e":
+                                new_lines.append(f"{indent}# octowrap: off")
+                                new_lines.append(line)
+                                new_lines.append(f"{indent}# octowrap: on")
+                            elif action == "f":
+                                initial = f"{indent}# FIXME: "
+                                subsequent = f"{indent}#  "
+                                flag_text = (
+                                    "Manually fix the below comment"
+                                    " (flagged using octowrap in"
+                                    " interactive mode)."
+                                )
+                                wrapped = textwrap.fill(
+                                    flag_text,
+                                    width=max_line_length,
+                                    initial_indent=initial,
+                                    subsequent_indent=subsequent,
+                                    break_on_hyphens=False,
+                                    break_long_words=False,
+                                )
+                                new_lines.extend(wrapped.split("\n"))
+                                new_lines.append(line)
+                            elif action == "q":
+                                user_quit = True
+                                if _state is not None:
+                                    _state["quit"] = True
+                                new_lines.append(line)
+                            else:  # skip
+                                new_lines.append(line)
+                        else:
+                            # Defensive: inline extraction always changes the line count
+                            # (1 -> 2+), so this branch is unreachable in practice.
+                            new_lines.append(line)  # pragma: no cover
+            else:
+                new_lines.extend(block["lines"])
             continue
 
         # Check if this block contains any pragma directives
@@ -808,6 +990,7 @@ def process_file(
     todo_patterns: list[str] | None = None,
     todo_case_sensitive: bool = False,
     todo_multiline: bool = True,
+    inline: bool = True,
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
@@ -825,6 +1008,7 @@ def process_file(
         todo_patterns=todo_patterns,
         todo_case_sensitive=todo_case_sensitive,
         todo_multiline=todo_multiline,
+        inline=inline,
     )
 
     if changed and not dry_run:
@@ -887,6 +1071,12 @@ def main():
         action="store_true",
         help="Review each change interactively before applying",
     )
+    parser.add_argument(
+        "--no-inline",
+        action="store_true",
+        default=None,
+        help="Disable extraction of overflowing inline comments",
+    )
 
     parser.add_argument(
         "--config",
@@ -946,6 +1136,12 @@ def main():
     else:
         args.recursive = False
 
+    # Inline: default True, config can override, --no-inline wins
+    if args.no_inline is None:
+        args.inline = config.get("inline", True)
+    else:
+        args.inline = False
+
     # Build effective exclude list
     exclude_patterns = list(DEFAULT_EXCLUDES)
     if "exclude" in config:
@@ -1002,6 +1198,7 @@ def main():
             todo_patterns=todo_patterns,
             todo_case_sensitive=todo_case_sensitive,
             todo_multiline=todo_multiline,
+            inline=args.inline,
         )
 
         if args.diff and changed:
@@ -1055,6 +1252,7 @@ def main():
                     todo_patterns=todo_patterns,
                     todo_case_sensitive=todo_case_sensitive,
                     todo_multiline=todo_multiline,
+                    inline=args.inline,
                 )
             except Exception:
                 pass  # Errors will be reported during the actual processing pass.
@@ -1075,6 +1273,7 @@ def main():
                 todo_patterns=todo_patterns,
                 todo_case_sensitive=todo_case_sensitive,
                 todo_multiline=todo_multiline,
+                inline=args.inline,
             )
 
             if changed:

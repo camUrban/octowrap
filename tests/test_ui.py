@@ -98,10 +98,10 @@ class TestShowBlockDiff:
 class TestGetch:
     """Tests for _getch(), the platform specific single keypress reader.
 
-    _getch uses msvcrt on Windows and termios/tty on Unix (imported conditionally at
-    module level).  The skipif markers ensure each platform native test only runs where
-    the real modules exist. test_non_native_platform covers the opposite branch by
-    monkeypatching sys.platform and faking the missing modules.
+    _getch uses msvcrt on Windows and termios/tty on Unix (imported locally inside the
+    function).  The skipif markers ensure each platform native test only runs where the
+    real modules exist. test_non_native_platform covers the opposite branch by
+    monkeypatching sys.platform and injecting fake modules into sys.modules.
     """
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows only path")
@@ -130,18 +130,16 @@ class TestGetch:
     def test_non_native_platform(self, monkeypatch):
         """Covers the branch for the platform we are NOT running on.
 
-        Since the conditional top level imports only define the native platform's
-        modules, we inject fake modules for the other platform directly onto the rewrap
-        module.
+        Since _getch imports platform modules locally, we inject fake modules into
+        sys.modules so the import statement picks them up.
         """
         if sys.platform == "win32":
             # We're on Windows, so fake the Unix path.
             monkeypatch.setattr(sys, "platform", "linux")
             fake_termios = MagicMock()
             fake_termios.tcgetattr.return_value = []
-            # termios/tty don't exist on the module on Windows, so inject them.
-            monkeypatch.setattr(mod, "termios", fake_termios, raising=False)
-            monkeypatch.setattr(mod, "tty", MagicMock(), raising=False)
+            monkeypatch.setitem(sys.modules, "termios", fake_termios)
+            monkeypatch.setitem(sys.modules, "tty", MagicMock())
             monkeypatch.setattr(
                 "sys.stdin",
                 MagicMock(
@@ -154,8 +152,7 @@ class TestGetch:
             monkeypatch.setattr(sys, "platform", "win32")
             fake_msvcrt = MagicMock()
             fake_msvcrt.getwch.return_value = "z"
-            # msvcrt doesn't exist on the module on Unix, so inject it.
-            monkeypatch.setattr(mod, "msvcrt", fake_msvcrt, raising=False)
+            monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
             assert _getch() == "z"
 
 

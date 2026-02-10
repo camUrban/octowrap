@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
 [![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
 
-A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, list items, and tool directives. TODO/FIXME markers are intelligently rewrapped with continuation indentation.
+A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, list items, and tool directives. TODO/FIXME markers are intelligently rewrapped with continuation indentation. Overflowing inline comments are extracted into standalone block comments and wrapped normally.
 
 ## Features
 
@@ -18,6 +18,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Preserves section dividers (`# --------`, `# ========`, etc.)
 - Preserves list items (bullets, numbered items)
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
+- Extracts overflowing inline comments (`code  # comment`) into standalone block comments above the code line when the line exceeds the line length, then wraps them normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline`.
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
 - Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining blocks in the current file, `e` exclude, `f` flag, `s` skip, `q` quit). Flagging inserts a FIXME marker above the block for later human attention. Quitting stops all processing, including remaining files.
@@ -40,7 +41,7 @@ uv pip install -e ".[dev]"
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
+octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [--no-inline] [-i] [--color | --no-color]
 ```
 
 ### Stdin/stdout
@@ -77,6 +78,25 @@ After (`--line-length 88`):
 # length and really should be wrapped to fit within a reasonable number of
 # columns.
 ```
+
+## Inline Comment Extraction
+
+When a code line with an inline comment exceeds the line length, octowrap extracts the comment into a standalone block comment above the code:
+
+Before:
+
+```python
+x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit
+```
+
+After (`--line-length 88`):
+
+```python
+# This comment pushes the line way past the limit
+x = some_really_long_function_call(arg1, arg2)
+```
+
+Tool directives (`# type: ignore`, `# noqa`, `# fmt: off`, etc.) are never extracted, even when the line overflows. Disable this behavior entirely with `--no-inline` or `inline = false` in config.
 
 ## TODO/FIXME Rewrapping
 
@@ -151,7 +171,7 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.3.1
+  rev: v0.4.0
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
@@ -188,6 +208,7 @@ Add a `[tool.octowrap]` section to your `pyproject.toml` to set project-level de
 [tool.octowrap]
 line-length = 120
 recursive = false
+inline = true
 exclude = ["migrations", "generated"]
 extend-exclude = ["vendor"]
 ```
@@ -196,6 +217,7 @@ extend-exclude = ["vendor"]
 |------------------------|-----------|---------------------|------------------|
 | `line-length`          | int       | 88                  | `--line-length`  |
 | `recursive`            | bool      | true                | `--no-recursive` |
+| `inline`               | bool      | true                | `--no-inline`    |
 | `exclude`              | list[str] | —                   | —                |
 | `extend-exclude`       | list[str] | —                   | —                |
 | `todo-patterns`        | list[str] | `["todo", "fixme"]` | —                |

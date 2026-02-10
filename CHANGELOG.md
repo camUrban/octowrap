@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- Inline comment extraction: when a code line with an inline comment (`code  # comment`) exceeds the line length, the comment is extracted into a standalone block comment above the code line and wrapped normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline` or `inline = false` in config.
+- `--no-inline` CLI flag to disable inline comment extraction
+- `inline` config key (bool, default `true`) in `[tool.octowrap]`
 - Interactive mode (`-i`) now shows a `[X/Y]` progress indicator in the diff header, where X is the current changed block and Y is the total across all files. A pre-scan counts changed blocks upfront so the total is known before prompting begins.
 
 ### Changed

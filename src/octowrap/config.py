@@ -11,6 +11,7 @@ class ConfigError(Exception):
 _SCALAR_KEYS: dict[str, type] = {
     "line-length": int,
     "recursive": bool,
+    "inline": bool,
     "todo-case-sensitive": bool,
     "todo-multiline": bool,
 }
