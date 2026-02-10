@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-02-10
 
 ### Added
 - List item wrapping: long list items (bullets, numbered, lettered) are now rewrapped with hanging indent aligned to the text after the marker. Continuation lines indented to the marker's text column are collected before wrapping. Nesting is handled naturally — each item wraps independently at its own indent level. Disable with `list-wrap = false` in config.
