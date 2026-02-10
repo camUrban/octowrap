@@ -153,17 +153,21 @@ def is_tool_directive(text: str) -> bool:
 def find_inline_comment(line: str) -> int | None:
     """Return the index of the ``#`` that starts an inline comment, or ``None``.
 
-    Walks the line character-by-character, tracking string state (single, double, and
-    # `` characters inside string literals
-    triple quotes plus backslash escapes) so that ``
-    # `` is a full-line comment (only whitespace
-    are ignored.  Returns ``None`` when the ``
-    before it) or when no ``#`` exists outside strings.
+    The line is scanned character by character while tracking whether the current
+    position is inside a string literal (single-quoted, double-quoted, or
+    triple-quoted) and handling backslash escapes so that any ``#`` characters
+    that occur within string literals are ignored.
+
+    A ``#`` is treated as starting an *inline* comment only if there is some
+    non-whitespace text before it on the same line. If the ``#`` is preceded
+    only by whitespace, it is considered a full-line comment and this function
+    returns ``None``. ``None`` is also returned when there is no ``#`` outside
+    of string literals.
 
     Note:
-
-       This function does **not** track multi-line string state across lines, matching
-       the limitation of the existing block parser.
+        This function does **not** track multi-line string state across lines; it
+        only analyzes the single line passed in, matching the limitation of the
+        existing block parser.
     """
     in_string: str | None = None  # None, or the quote character(s) (' / " / ''' / """)
     i = 0
