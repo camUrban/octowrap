@@ -66,21 +66,39 @@ def is_excluded(path: Path, exclude_patterns: list[str]) -> bool:
     return False
 
 
+def _looks_like_prose(text: str) -> bool:
+    """Return True if *text* looks like natural-language prose.
+
+    Called as a second pass after a code-pattern matched, to rescue false positives such
+    as "if the server is down:" or "return the result".
+    """
+    lower = text.strip().lower()
+    determiners = r"(?:the|this|that|these|those)"
+    keywords = r"(?:if|while|with|return|raise|import|assert|yield)"
+    # keyword + determiner + word  (e.g. "if the server …")
+    if re.match(rf"{keywords}\s+{determiners}\s+[a-z]", lower):
+        return True
+    # "return to …"  (e.g. "return to the caller")
+    if re.match(r"return\s+to\s+", lower):
+        return True
+    return False
+
+
 def is_likely_code(text: str) -> bool:
     """Heuristic: detect if a comment line is probably commented out code."""
     code_patterns = [
         r"^\s*[\w_]+\s*=",  # assignment
-        r"^\s*def\s+\w+",  # function def
+        r"^\s*def\s+\w+\s*\(",  # function def
         r"^\s*class\s+\w+",  # class def
         r"^\s*import\s+",  # import
         r"^\s*from\s+\w+\s+import",  # from import
         r"^\s*if\s+.*:",  # if statement
-        r"^\s*for\s+.*:",  # for loop
+        r"^\s*for\s+\w+(?:\s*,\s*\w+)*\s+in\s+",  # for loop
         r"^\s*while\s+.*:",  # while loop
         r"^\s*return\s+",  # return
         r"^\s*raise\s+",  # raise
         r"^\s*try\s*:",  # try
-        r"^\s*except\s*",  # except
+        r"^\s*except\s*($|[:(]|[A-Z])",  # except
         r"^\s*with\s+.*:",  # with statement
         r"^\s*assert\s+",  # assert
         r"^\s*yield\s+",  # yield
@@ -88,10 +106,14 @@ def is_likely_code(text: str) -> bool:
         r"^\s*@\w+",  # decorator
         r"^\s*print\s*\(",  # print call
         r"^\s*self\.",  # self reference
-        r"^\s*\w+\.\w+\s*\(",  # method call
+        r"^\s*\w+\.\w+\(",  # method call
         r"^\s*\w+\s*\([^)]*\)\s*$",  # function call
     ]
-    return any(re.match(p, text) for p in code_patterns)
+    if not any(re.match(p, text) for p in code_patterns):
+        return False
+    if _looks_like_prose(text):
+        return False
+    return True
 
 
 def is_divider(text: str) -> bool:

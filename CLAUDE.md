@@ -42,7 +42,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 5. **Block parsing** (`parse_comment_blocks()`): groups consecutive same-indent comment lines into blocks, separating them from code
 6. **Pragma handling**: `parse_pragma()` detects `# octowrap: off` / `# octowrap: on` directives (case-insensitive). When a block contains pragmas, it's split at pragma boundaries; segments between off/on are preserved as-is. State carries across blocks.
 7. **Preservation checks**: each comment is tested against heuristics:
-   - `is_likely_code()`: 21 patterns detecting commented-out Python code
+   - `is_likely_code()`: two-pass detection — 21 regex patterns match commented-out Python code, then `_looks_like_prose()` rescues false positives where a keyword is followed by a determiner (the/this/that/these/those) or specific phrases like "return to" / "assert that"
    - `is_divider()`: repeated-character separator lines
    - `is_list_item()`: bullets, numbered items
    - `is_tool_directive()`: tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, PEP 484 type comments)

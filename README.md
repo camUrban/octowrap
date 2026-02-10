@@ -13,7 +13,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Keeps hyphenated words intact (never breaks `command-line-interface` at hyphens)
 - Keeps long words and URLs intact (they overflow the line length rather than being broken mid-word)
 - Heals previously broken hyphenated words on rewrap (e.g. `re-` / `validate` -> `re-validate`)
-- Preserves commented-out Python code (detected via 21 heuristic patterns)
+- Preserves commented-out Python code (detected via 21 heuristic patterns with a prose disqualifier to avoid false positives on natural English)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
 - Preserves list items (bullets, numbered items)
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection

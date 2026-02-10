@@ -8,6 +8,7 @@
 - `.python-version` pins dev environment to Python 3.13 (docformatter's `untokenize` dependency doesn't build on 3.14)
 
 ### Fixed
+- Reduced `is_likely_code()` false positives: tightened `def`, `for`, `except`, and method-call patterns, and added a `_looks_like_prose()` second-pass filter that rescues natural English comments starting with Python keywords followed by determiners (e.g. "if the server is down:", "return the result to the caller", "for example: this shows the pattern")
 - Hyphenated words (e.g. `command-line-interface`) are no longer broken at hyphens during rewrapping (`break_on_hyphens=False`)
 - Long words and URLs are no longer broken mid-word; they overflow the line length instead of being split (`break_long_words=False`)
 - Previously broken hyphenated words (e.g. `re-` / `validate` on separate lines) are now healed back into `re-validate` on rewrap, fixing an idempotency bug where successive runs would corrupt hyphenated words by inserting a space (`re- validate`)
