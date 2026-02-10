@@ -576,3 +576,40 @@ class TestJoinCommentLines:
     def test_no_heal_when_next_line_starts_with_space(self):
         """Next line starting with space should not trigger healing."""
         assert _join_comment_lines(["re-", " validate"]) == "re-  validate"
+
+    def test_opening_paren_no_space(self):
+        """A line ending with '(' should join without a space."""
+        assert (
+            _join_comment_lines(["moments (", "in the first"])
+            == "moments (in the first"
+        )
+
+    def test_opening_bracket_no_space(self):
+        """A line ending with '[' should join without a space."""
+        assert _join_comment_lines(["see [", "section 1]"]) == "see [section 1]"
+
+    def test_closing_paren_no_space(self):
+        """A line starting with ')' should join without a space."""
+        assert _join_comment_lines(["the first Airplane's CG", ") on each"]) == (
+            "the first Airplane's CG) on each"
+        )
+
+    def test_closing_bracket_no_space(self):
+        """A line starting with ']' should join without a space."""
+        assert _join_comment_lines(["see section 1", "] for details"]) == (
+            "see section 1] for details"
+        )
+
+    def test_paren_full_example(self):
+        """End-to-end test matching the reported bug scenario."""
+        lines = [
+            "Solve for the forces (in the first Airplane's geometry axes) and moments (",
+            "in the first Airplane's geometry axes, relative to the first Airplane's CG)",
+            "on each Panel.",
+        ]
+        expected = (
+            "Solve for the forces (in the first Airplane's geometry axes) and moments "
+            "(in the first Airplane's geometry axes, relative to the first Airplane's "
+            "CG) on each Panel."
+        )
+        assert _join_comment_lines(lines) == expected

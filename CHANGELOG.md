@@ -9,6 +9,7 @@
 ### Fixed
 - `[f]lag` action in interactive mode prompt was rendered without color because `magenta` was missing from the ANSI color dictionary; added it so the flag option is now correctly colorized
 - `todo-patterns` containing trailing punctuation (e.g. `"TEST:"`) failed to match due to a `\b` word boundary being appended after non-word characters; the boundary is now only added when the pattern ends with a word character
+- Rewrapping no longer introduces erroneous spaces after opening brackets (`(`, `[`) or before closing brackets (`)`, `]`) when a line break falls at a bracket boundary
 
 ## 0.3.1 - 2026-02-09
 

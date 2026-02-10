@@ -216,18 +216,25 @@ def extract_todo_marker(
 
 def _join_comment_lines(lines: list[str]) -> str:
     # noinspection GrazieInspection
-    """Join comment content lines, healing hyphenated words broken across lines.
+    """Join comment content lines, healing line-break artifacts.
 
     When a line ends with ``<letter>-`` and the next line starts with a letter, they are
     assumed to be fragments of a single hyphenated word and are joined without an
-    intervening space.  All other consecutive lines are joined with a single space,
-    matching the behavior of ``" ".join()``.
+    intervening space.  When a line ends with an opening bracket (``(`` or ``[``) or the
+    next line starts with a closing bracket (``)`` or ``]``), the lines are joined without
+    a space to avoid introducing erroneous whitespace inside parenthesised text.  All
+    other consecutive lines are joined with a single space, matching the behavior of
+    ``" ".join()``.
     """
     if not lines:
         return ""
     result = lines[0]
     for line in lines[1:]:
         if re.search(r"[a-zA-Z]-$", result) and line and line[0].isalpha():
+            result += line
+        elif result and result[-1] in ("(", "["):
+            result += line
+        elif line and line[0] in (")", "]"):
             result += line
         else:
             result += " " + line
