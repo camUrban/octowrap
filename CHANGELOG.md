@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 - 2026-02-09
+## 0.3.1 - 2026-02-09
 
 ### Added
 - An editor integration section to `README.md` that describes setting up octowrap as a PyCharm file watcher
