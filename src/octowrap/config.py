@@ -54,6 +54,7 @@ def find_config_file(start_dir: Path | None = None) -> Path | None:
 
 
 def load_config(config_path: Path | None = None) -> dict:
+    # noinspection GrazieInspection
     """Load and validate ``[tool.octowrap]`` from *config_path*.
 
     If *config_path* is ``None``, :func:`find_config_file` is called first.

@@ -171,6 +171,7 @@ def extract_todo_marker(
     patterns: list[str] | None = None,
     case_sensitive: bool = False,
 ) -> tuple[str, str]:
+    # noinspection GrazieInspection
     """Extract the marker prefix and remaining content from a TODO line.
 
     Returns ``(marker_prefix, content)`` — e.g. ``("TODO: ", "fix the bug")``.
@@ -189,6 +190,7 @@ def extract_todo_marker(
 
 
 def _join_comment_lines(lines: list[str]) -> str:
+    # noinspection GrazieInspection
     """Join comment content lines, healing hyphenated words broken across lines.
 
     When a line ends with ``<letter>-`` and the next line starts with a letter,
@@ -365,7 +367,7 @@ def rewrap_comment_block(
                 if content:
                     result.append(prefix + content)
                 else:
-                    # Defensive: preserved lines always have non empty content since
+                    # Defensive: preserved lines always have non-empty content since
                     # blank lines are handled above.
                     result.append(indent + "#")  # pragma: no cover
         elif para_type == "todo":
@@ -479,6 +481,7 @@ def _getch() -> str:
 
 
 def prompt_user() -> str:
+    # noinspection GrazieInspection
     """Prompt user for action on a block.
 
     Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 's' (skip), or 'q' (quit)

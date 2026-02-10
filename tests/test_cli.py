@@ -171,7 +171,7 @@ class TestEntryPoints:
 
 
 class TestConfigIntegration:
-    """End to end tests for pyproject.toml config support."""
+    """End-to-end tests for pyproject.toml config support."""
 
     def test_config_sets_line_length(self, tmp_path, monkeypatch, capsys):
         """Config line-length is respected when CLI flag is absent."""
@@ -216,7 +216,7 @@ class TestConfigIntegration:
         assert "1 file(s) reformatted." in out
 
     def test_invalid_config_exits(self, tmp_path, monkeypatch, capsys):
-        """Unknown config keys cause a non zero exit."""
+        """Unknown config keys cause a non-zero exit."""
         (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\nbogus = 42\n")
         f = tmp_path / "a.py"
         f.write_bytes(b"x = 1\n")
@@ -504,7 +504,7 @@ class TestDefaultExcludes:
 
 
 class TestColorFlags:
-    """Tests for --color/--no-color/auto detect."""
+    """Tests for --color/--no-color/auto-detect."""
 
     def test_force_color_on(self, tmp_path, monkeypatch, capsys):
         """--color forces _USE_COLOR to True regardless of TTY."""

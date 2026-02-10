@@ -411,7 +411,7 @@ class TestPragma:
         # Protected block preserved
         assert "# This is a comment that was wrapped\n" in result
         assert "# at a short width previously.\n" in result
-        # Re enabled block rewrapped
+        # Re-enabled block rewrapped
         assert (
             "# This is another comment that was wrapped at a short width previously."
             in result
@@ -456,7 +456,7 @@ class TestPragma:
         assert changed
         # Protected block preserved
         assert "# This is a comment that was wrapped\n" in result
-        # Re enabled block rewrapped
+        # Re-enabled block rewrapped
         assert (
             "# Another comment that was wrapped at a short width previously." in result
         )
