@@ -6,6 +6,10 @@
 - File processing errors now print to stderr (instead of stdout) and cause exit code 2, matching ruff's behavior
 - Malformed `pyproject.toml` files now raise an error instead of being silently skipped during config discovery
 
+### Fixed
+- `[f]lag` action in interactive mode prompt was rendered without color because `magenta` was missing from the ANSI color dictionary; added it so the flag option is now correctly colorized
+- `todo-patterns` containing trailing punctuation (e.g. `"TEST:"`) failed to match due to a `\b` word boundary being appended after non-word characters; the boundary is now only added when the pattern ends with a word character
+
 ## 0.3.1 - 2026-02-09
 
 ### Added

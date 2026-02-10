@@ -175,7 +175,8 @@ def is_todo_marker(
     flags = 0 if case_sensitive else re.IGNORECASE
     # Sort longest-first to avoid prefix ambiguity
     for p in sorted(patterns, key=lambda s: len(s), reverse=True):
-        if re.match(rf"{re.escape(p)}\b", text.lstrip(), flags):
+        boundary = r"\b" if re.match(r"\w", p[-1:]) else ""
+        if re.match(rf"{re.escape(p)}{boundary}", text.lstrip(), flags):
             return True
     return False
 
@@ -206,7 +207,8 @@ def extract_todo_marker(
     leading = text[: len(text) - len(stripped)]
     flags = 0 if case_sensitive else re.IGNORECASE
     for p in sorted(patterns, key=lambda s: len(s), reverse=True):
-        m = re.match(rf"({re.escape(p)}\b\s*:?\s*)(.*)", stripped, flags)
+        boundary = r"\b" if re.match(r"\w", p[-1:]) else ""
+        m = re.match(rf"({re.escape(p)}{boundary}\s*:?\s*)(.*)", stripped, flags)
         if m:
             return leading + m.group(1), m.group(2)
     return "", text
@@ -449,6 +451,7 @@ def colorize(text: str, color: str) -> str:
         "green": "\033[92m",
         "yellow": "\033[93m",
         "cyan": "\033[96m",
+        "magenta": "\033[95m",
         "reset": "\033[0m",
         "bold": "\033[1m",
     }

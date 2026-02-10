@@ -423,6 +423,18 @@ class TestIsTodoMarker:
         """Leading whitespace on the content is okay for markers."""
         assert is_todo_marker("  TODO fix", patterns=["todo"])
 
+    def test_pattern_with_trailing_colon(self):
+        """Patterns that include a colon (e.g. 'TEST:') should match."""
+        assert is_todo_marker("TEST: Add tests", patterns=["TEST:"])
+        assert is_todo_marker("REFACTOR: clean up", patterns=["REFACTOR:"])
+
+    def test_pattern_with_trailing_colon_case_insensitive(self):
+        assert is_todo_marker("test: Add tests", patterns=["TEST:"])
+
+    def test_pattern_with_trailing_colon_no_false_prefix(self):
+        """'TEST:' pattern should not match 'TESTING:' — the colon anchors it."""
+        assert not is_todo_marker("TESTING: something", patterns=["TEST:"])
+
 
 class TestIsTodoContinuation:
     """Tests for is_todo_continuation()."""
@@ -513,6 +525,17 @@ class TestExtractTodoMarker:
         marker, content = extract_todo_marker("  TODO: fix")
         assert marker == "  TODO: "
         assert content == "fix"
+
+    def test_pattern_with_trailing_colon(self):
+        """Pattern 'TEST:' should match 'TEST: Add tests'."""
+        marker, content = extract_todo_marker("TEST: Add tests", patterns=["TEST:"])
+        assert marker == "TEST: "
+        assert content == "Add tests"
+
+    def test_pattern_with_trailing_colon_no_double_colon(self):
+        """Pattern 'TEST:' should not produce a double colon in the marker."""
+        marker, content = extract_todo_marker("TEST: stuff", patterns=["TEST:"])
+        assert "::" not in marker
 
 
 class TestJoinCommentLines:

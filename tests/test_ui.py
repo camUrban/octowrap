@@ -206,3 +206,21 @@ class TestPromptUser:
     def test_exclude_uppercase(self, monkeypatch):
         monkeypatch.setattr(mod, "_getch", lambda: "E")
         assert prompt_user() == "e"
+
+    def test_prompt_colors_are_all_valid(self, monkeypatch):
+        """Every colorize() call in prompt_user must use a known color name."""
+        monkeypatch.setattr(mod, "_USE_COLOR", True)
+        monkeypatch.setattr(mod, "_getch", lambda: "a")
+        captured = []
+        original_colorize = colorize
+
+        def spy(text, color):
+            captured.append(color)
+            return original_colorize(text, color)
+
+        monkeypatch.setattr(mod, "colorize", spy)
+        prompt_user()
+
+        colors = {"red", "green", "yellow", "cyan", "magenta", "bold", "reset"}
+        for color in captured:
+            assert color in colors, f"prompt_user uses unknown color {color!r}"
