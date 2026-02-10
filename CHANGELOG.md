@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- `f` (flag) action in interactive mode (`-i`) that inserts a `# FIXME: Manually fix the below comment` marker above the original block for later human attention, without modifying the block itself
 - codespell for spell checking (pre-commit hook, CI lint step, `[tool.codespell]` config)
 - docformatter for docstring formatting (pre-commit hook, CI lint step, `[tool.docformatter]` config)
 - `.python-version` pins dev environment to Python 3.13 (docformatter's `untokenize` dependency doesn't build on 3.14)

@@ -507,12 +507,14 @@ def prompt_user() -> str:
     # noinspection GrazieInspection
     """Prompt user for action on a block.
 
-    Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 's' (skip), or 'q' (quit)
+    Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 'f' (flag), 's' (skip),
+    or 'q' (quit)
     """
     prompt = (
         f"[{colorize('a', 'green')}]ccept / "
         f"accept [{colorize('A', 'green')}]ll / "
         f"[{colorize('e', 'cyan')}]xclude / "
+        f"[{colorize('f', 'magenta')}]lag / "
         f"[{colorize('s', 'yellow')}]kip / "
         f"[{colorize('q', 'red')}]uit? "
     )
@@ -526,7 +528,7 @@ def prompt_user() -> str:
             if ch == "A":
                 return "A"
             ch = ch.lower()
-            if ch in ("a", "e", "s", "q"):
+            if ch in ("a", "e", "f", "s", "q"):
                 return ch
         except (EOFError, KeyboardInterrupt):
             print()
@@ -664,6 +666,24 @@ def process_content(
                     new_lines.append(f"{indent}# octowrap: off")
                     new_lines.extend(block["lines"])
                     new_lines.append(f"{indent}# octowrap: on")
+                elif action == "f":
+                    indent = block["indent"]
+                    initial = f"{indent}# FIXME: "
+                    subsequent = f"{indent}#  "
+                    flag_text = (
+                        "Manually fix the below comment"
+                        " (flagged using octowrap in interactive mode)."
+                    )
+                    wrapped = textwrap.fill(
+                        flag_text,
+                        width=max_line_length,
+                        initial_indent=initial,
+                        subsequent_indent=subsequent,
+                        break_on_hyphens=False,
+                        break_long_words=False,
+                    )
+                    new_lines.extend(wrapped.split("\n"))
+                    new_lines.extend(block["lines"])
                 elif action == "q":
                     user_quit = True
                     if _state is not None:

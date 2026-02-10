@@ -333,6 +333,86 @@ class TestProcessFileInteractive:
         # Second block should be rewrapped
         assert "# Second block that was also wrapped at a short width." in content
 
+    def test_flag_adds_fixme_above_block(self, tmp_path, monkeypatch):
+        """Flagging a block inserts a FIXME comment and preserves original text."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        changed, content = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        assert "# FIXME: Manually fix the below comment" in content
+        # Original block text preserved below the flag
+        assert "# This is a comment that was wrapped\n" in content
+        assert "# at a short width previously.\n" in content
+
+    def test_flag_preserves_indent(self, tmp_path, monkeypatch):
+        """The FIXME line matches the indentation of the flagged block."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"def foo():\n"
+            b"    # This is a comment that was wrapped\n"
+            b"    # at a short width previously.\n"
+        )
+        # fmt: on
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        assert "    # FIXME: Manually fix the below comment" in content
+
+    def test_flag_wraps_at_line_length(self, tmp_path, monkeypatch):
+        """A short line length forces the FIXME comment to wrap."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        _, content = process_file(f, max_line_length=40, interactive=True)
+        fixme_lines = [
+            ln for ln in content.splitlines() if "FIXME" in ln or ln.startswith("#  ")
+        ]
+        assert len(fixme_lines) > 1
+        # Continuation lines use one-space indent
+        for line in fixme_lines[1:]:
+            if line.startswith("#  "):
+                assert line.startswith("#  ")
+
+    def test_flag_then_accept(self, tmp_path, monkeypatch):
+        """Flag on first block and accept on second works correctly."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        responses = iter(["f", "a"])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        changed, content = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        # First block should have FIXME above it, original text preserved
+        assert "# FIXME: Manually fix the below comment" in content
+        assert "# First block that was wrapped\n" in content
+        # Second block should be rewrapped
+        assert "# Second block that was also wrapped at a short width." in content
+
+    def test_flagged_block_gets_rewrapped_on_rerun(self, tmp_path, monkeypatch):
+        """After flagging, re-running presents the original block for rewrapping."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        process_file(f, max_line_length=88, interactive=True)
+        # Re-run in non-interactive mode — the FIXME is a TODO marker and stays, but
+        # the original block below it is still wrappable.
+        changed, content = process_file(f, max_line_length=88)
+        # The FIXME comment should still be present
+        assert "# FIXME: Manually fix the below comment" in content
+        # The original block should have been rewrapped
+        assert (
+            "# This is a comment that was wrapped at a short width previously."
+            in content
+        )
+
 
 class TestToolDirectivePreservation:
     """Integration tests for tool directive preservation during rewrapping."""
