@@ -20,7 +20,7 @@ import tempfile
 import textwrap
 from pathlib import Path
 
-from octowrap.config import ConfigError, load_config
+from octowrap.config import ConfigError, find_config_file, load_config
 
 # Platform specific imports for single keypress input (_getch). msvcrt is Windows only;
 # termios/tty are Unix only. The type: ignore comments suppress errors from type
@@ -733,7 +733,7 @@ def process_file(
 
     Returns (changed, new_content).
     """
-    with open(filepath, newline="") as f:
+    with open(filepath, encoding="utf-8", newline="") as f:
         content = f.read()
 
     changed, new_content = process_content(
@@ -751,7 +751,7 @@ def process_file(
         original_mode = stat.S_IMODE(os.stat(filepath).st_mode)
         tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
         try:
-            with open(tmp_fd, "w", newline="") as f:
+            with open(tmp_fd, "w", encoding="utf-8", newline="") as f:
                 f.write(new_content)
             os.chmod(tmp_path, original_mode)
             os.replace(tmp_path, filepath)
@@ -814,6 +814,12 @@ def main():
         default=None,
         help="Path to pyproject.toml config file (default: auto-discover)",
     )
+    parser.add_argument(
+        "--stdin-filename",
+        type=Path,
+        default=None,
+        help="Filename for config discovery and diff display (only valid with '-')",
+    )
 
     color_group = parser.add_mutually_exclusive_group()
     color_group.add_argument(
@@ -842,7 +848,11 @@ def main():
     # Load config from pyproject.toml and merge with CLI args. Precedence: hardcoded
     # defaults < config file < CLI args.
     try:
-        config = load_config(args.config)
+        if args.stdin_filename is not None and args.config is None:
+            discovered = find_config_file(args.stdin_filename.parent)
+            config = load_config(discovered)
+        else:
+            config = load_config(args.config)
     except ConfigError as exc:
         print(f"octowrap: config error: {exc}", file=sys.stderr)
         raise SystemExit(1)
@@ -883,6 +893,14 @@ def main():
 
     # Handle stdin mode when '-' is passed as a path
     stdin_mode = any(str(p) == "-" for p in args.paths)
+
+    if args.stdin_filename is not None and not stdin_mode:
+        print(
+            "octowrap: error: --stdin-filename requires '-' (stdin mode)",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     if stdin_mode:
         if len(args.paths) > 1:
             print(
@@ -907,11 +925,12 @@ def main():
         )
 
         if args.diff and changed:
+            diff_label = str(args.stdin_filename) if args.stdin_filename else "<stdin>"
             diff = difflib.unified_diff(
                 content.splitlines(keepends=True),
                 new_content.splitlines(keepends=True),
-                fromfile="<stdin>",
-                tofile="<stdin>",
+                fromfile=diff_label,
+                tofile=diff_label,
             )
             sys.stdout.write("".join(diff))
         elif not (args.diff or args.check):
@@ -944,7 +963,9 @@ def main():
     interactive_state: dict = {}
     for filepath in files_to_process:
         try:
-            original: str | None = filepath.read_text() if args.diff else None
+            original: str | None = (
+                filepath.read_text(encoding="utf-8") if args.diff else None
+            )
             changed, new_content = process_file(
                 filepath,
                 args.line_length,

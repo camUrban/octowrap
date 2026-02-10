@@ -1,6 +1,7 @@
 import io
 import runpy
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -679,3 +680,122 @@ class TestStdinMode:
             main()
         out = capsys.readouterr().out
         assert all(len(line) <= 40 for line in out.splitlines())
+
+
+class TestStdinFilename:
+    """Tests for the --stdin-filename flag."""
+
+    def test_stdin_filename_in_diff(self, monkeypatch, capsys):
+        """--stdin-filename shows the given name in diff headers instead of <stdin>."""
+        src = "# This is a comment that was wrapped\n# at a short width previously.\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr(
+            "sys.argv", ["octowrap", "--diff", "--stdin-filename", "src/app.py", "-"]
+        )
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        expected = str(Path("src/app.py"))
+        assert f"--- {expected}" in out
+        assert f"+++ {expected}" in out
+
+    def test_stdin_filename_without_stdin_errors(self, tmp_path, monkeypatch, capsys):
+        """--stdin-filename without '-' prints an error and exits 1."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr(
+            "sys.argv", ["octowrap", "--stdin-filename", "foo.py", str(f)]
+        )
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "--stdin-filename requires" in err
+
+    def test_stdin_filename_config_discovery(self, tmp_path, monkeypatch, capsys):
+        """Config is discovered from --stdin-filename's parent, not CWD."""
+        # Create a pyproject.toml in a subdirectory with a short line-length
+        sub = tmp_path / "project"
+        sub.mkdir()
+        (sub / "pyproject.toml").write_text(
+            "[tool.octowrap]\nline-length = 40\n", encoding="utf-8"
+        )
+        # CWD has no config
+        monkeypatch.chdir(tmp_path)
+        src = "# A moderately long comment that fits at 88 but not at 40.\nx = 1\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr(
+            "sys.argv",
+            ["octowrap", "--stdin-filename", str(sub / "mod.py"), "-"],
+        )
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert all(len(line) <= 40 for line in out.splitlines())
+
+    def test_stdin_filename_with_explicit_config(self, tmp_path, monkeypatch, capsys):
+        """--config takes precedence over --stdin-filename for config discovery."""
+        # stdin-filename's parent has one config
+        sub = tmp_path / "project"
+        sub.mkdir()
+        (sub / "pyproject.toml").write_text(
+            "[tool.octowrap]\nline-length = 40\n", encoding="utf-8"
+        )
+        # Explicit config has a different line-length
+        explicit = tmp_path / "custom.toml"
+        explicit.write_text("[tool.octowrap]\nline-length = 60\n", encoding="utf-8")
+
+        monkeypatch.chdir(tmp_path)
+        src = "# A moderately long comment that fits at 88 and at 60 but not at 40.\nx = 1\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "octowrap",
+                "--config",
+                str(explicit),
+                "--stdin-filename",
+                str(sub / "mod.py"),
+                "-",
+            ],
+        )
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        # With line-length=60, the comment should be wrapped (not at 40)
+        assert all(len(line) <= 60 for line in out.splitlines())
+        # But it should NOT be all on one line (which 88 would allow)
+        comment_lines = [ln for ln in out.splitlines() if ln.startswith("#")]
+        assert len(comment_lines) > 1
+
+    def test_stdin_filename_basic_output(self, monkeypatch, capsys):
+        """Normal output is unaffected by --stdin-filename."""
+        src = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+        monkeypatch.setattr("sys.stdin", io.StringIO(src))
+        monkeypatch.setattr(
+            "sys.argv", ["octowrap", "--stdin-filename", "src/app.py", "-"]
+        )
+        with pytest.raises(SystemExit, match="0"):
+            main()
+        out = capsys.readouterr().out
+        assert (
+            "# This is a comment that was wrapped at a short width previously." in out
+        )
+        assert "x = 1" in out
+
+
+class TestDiffUtf8:
+    """Tests for UTF-8 handling in diff mode."""
+
+    def test_diff_reads_utf8(self, tmp_path, monkeypatch, capsys):
+        """--diff correctly reads and diffs files with non-ASCII comments."""
+        raw = (
+            b"# Erd\xc5\x91s\xe2\x80\x93Kac theorem says \xcf\x80(x) is\n"
+            b"# approximately x divided by ln x.\n"
+            b"x = 1\n"
+        )
+        f = tmp_path / "utf8.py"
+        f.write_bytes(raw)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "Erd\u0151s" in out

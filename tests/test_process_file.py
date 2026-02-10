@@ -402,8 +402,8 @@ class TestProcessFileInteractive:
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
         process_file(f, max_line_length=88, interactive=True)
-        # Re-run in non-interactive mode — the FIXME is a TODO marker and stays, but
-        # the original block below it is still wrappable.
+        # Re-run in non-interactive mode — the FIXME is a TODO marker and stays, but the
+        # original block below it is still wrappable.
         changed, content = process_file(f, max_line_length=88)
         # The FIXME comment should still be present
         assert "# FIXME: Manually fix the below comment" in content
@@ -669,6 +669,17 @@ class TestTodoIntegration:
         # In case-sensitive mode, lowercase 'todo' is regular prose, not a marker It
         # should still be rewrapped, just not with marker-style continuation
         assert lines[0].startswith("# todo: ")
+
+
+class TestUtf8:
+    def test_utf8_roundtrip(self, tmp_path):
+        """Non-ASCII characters in comments survive a process_file round trip."""
+        raw = "# Erd\u0151s\u2013Kac theorem: \u03c0(x) ~ x / ln(x)\nx = 1\n"
+        f = tmp_path / "utf8.py"
+        f.write_bytes(raw.encode("utf-8"))
+        changed, content = process_file(f, max_line_length=88)
+        assert not changed
+        assert content == raw
 
 
 class TestInteractiveFilepath:

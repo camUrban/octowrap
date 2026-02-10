@@ -39,7 +39,7 @@ uv pip install -e ".[dev]"
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
+octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
 ```
 
 ### Stdin/stdout
@@ -53,7 +53,13 @@ cat file.py | octowrap - --check         # exit 1 if changes needed
 cat file.py | octowrap - -l 79           # custom line length
 ```
 
-Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode).
+Use `--stdin-filename` to provide the original file path for config discovery and diff labels (useful for editor integrations like VS Code and Vim that pipe buffers via stdin):
+
+```bash
+cat file.py | octowrap - --stdin-filename src/app.py --diff
+```
+
+Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode). `--stdin-filename` requires `-`.
 
 ### Example
 
