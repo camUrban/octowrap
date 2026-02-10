@@ -28,8 +28,8 @@ VALID_KEYS: set[str] = {*_SCALAR_KEYS, *_LIST_STR_KEYS}
 def find_config_file(start_dir: Path | None = None) -> Path | None:
     """Walk up from *start_dir* looking for a pyproject.toml with [tool.octowrap].
 
-    Returns the path to the first matching file, or ``None``.
-    Malformed TOML files are silently skipped.
+    Returns the path to the first matching file, or ``None``. Malformed TOML files are
+    silently skipped.
     """
     if start_dir is None:
         start_dir = Path.cwd()
@@ -57,9 +57,9 @@ def load_config(config_path: Path | None = None) -> dict:
     # noinspection GrazieInspection
     """Load and validate ``[tool.octowrap]`` from *config_path*.
 
-    If *config_path* is ``None``, :func:`find_config_file` is called first.
-    Returns a ``dict`` of validated settings (may be empty).
-    Raises :class:`ConfigError` on unknown keys or type mismatches.
+    If *config_path* is ``None``, :func:`find_config_file` is called first. Returns a
+    ``dict`` of validated settings (may be empty). Raises :class:`ConfigError` on
+    unknown keys or type mismatches.
     """
     if config_path is None:
         config_path = find_config_file()

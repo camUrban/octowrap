@@ -28,6 +28,8 @@ classifiers = [
 
 [project.optional-dependencies]
 dev = [
+    "codespell>=2.4.0",
+    "docformatter>=1.7.0",
     "pre-commit>=4.5.1",
     "pytest>=9.0.0",
     "pytest-cov>=6.0.0",
@@ -55,3 +57,11 @@ exclude_lines = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.codespell]
+ignore-words = ".codespell-ignore.txt"
+skip = "docs/_build/*,*.dat"
+
+[tool.docformatter]
+black = true
+recursive = true

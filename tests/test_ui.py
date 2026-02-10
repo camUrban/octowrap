@@ -98,11 +98,10 @@ class TestShowBlockDiff:
 class TestGetch:
     """Tests for _getch(), the platform specific single keypress reader.
 
-    _getch uses msvcrt on Windows and termios/tty on Unix (imported
-    conditionally at module level).  The skipif markers ensure each
-    platform native test only runs where the real modules exist.
-    test_non_native_platform covers the opposite branch by monkeypatching
-    sys.platform and faking the missing modules.
+    _getch uses msvcrt on Windows and termios/tty on Unix (imported conditionally at
+    module level).  The skipif markers ensure each platform native test only runs where
+    the real modules exist. test_non_native_platform covers the opposite branch by
+    monkeypatching sys.platform and faking the missing modules.
     """
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows only path")
@@ -131,9 +130,9 @@ class TestGetch:
     def test_non_native_platform(self, monkeypatch):
         """Covers the branch for the platform we are NOT running on.
 
-        Since the conditional top level imports only define the native
-        platform's modules, we inject fake modules for the other platform
-        directly onto the rewrap module.
+        Since the conditional top level imports only define the native platform's
+        modules, we inject fake modules for the other platform directly onto the rewrap
+        module.
         """
         if sys.platform == "win32":
             # We're on Windows, so fake the Unix path.

@@ -69,5 +69,11 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
+      - name: codespell
+        run: codespell
+
+      - name: docformatter
+        run: docformatter --check --diff --config ./pyproject.toml .
+
       - name: octowrap check
         run: octowrap --check .

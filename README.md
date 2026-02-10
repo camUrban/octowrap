@@ -30,8 +30,11 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 ```bash
 git clone https://github.com/camUrban/octowrap.git
 cd octowrap
+uv venv            # uses .python-version (3.13)
 uv pip install -e ".[dev]"
 ```
+
+> **Note:** The dev environment is pinned to Python 3.13 via `.python-version` because docformatter's `untokenize` dependency doesn't build on 3.14. The runtime itself supports 3.11+.
 
 ## Usage
 

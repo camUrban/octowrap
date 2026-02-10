@@ -118,7 +118,8 @@ def is_list_item(text: str) -> bool:
 
 
 def is_tool_directive(text: str) -> bool:
-    """Check if a comment line is a tool directive (type: ignore, noqa, fmt: off, etc.)."""
+    """Check if a comment line is a tool directive (type: ignore, noqa, fmt: off,
+    etc.)."""
     directive_patterns = [
         r"type:\s*ignore",  # mypy/pyright inline suppression
         r"noqa(\s*:\s*\S+)?$",  # flake8/ruff lint suppression
@@ -142,8 +143,8 @@ def is_todo_marker(
 ) -> bool:
     """Check if *text* starts with a TODO/FIXME-style marker.
 
-    Matches at the start of *text* (after optional whitespace) so that
-    continuation lines with a leading space do **not** match.
+    Matches at the start of *text* (after optional whitespace) so that continuation
+    lines with a leading space do **not** match.
     """
     if patterns is None:
         patterns = DEFAULT_TODO_PATTERNS
@@ -160,8 +161,8 @@ def is_todo_marker(
 def is_todo_continuation(text: str) -> bool:
     """Return ``True`` if *text* looks like a TODO continuation line.
 
-    A continuation line starts with exactly one space and has
-    non-whitespace content after it.
+    A continuation line starts with exactly one space and has non-whitespace content
+    after it.
     """
     return text.startswith(" ") and not text.startswith("  ") and text.strip() != ""
 
@@ -174,8 +175,8 @@ def extract_todo_marker(
     # noinspection GrazieInspection
     """Extract the marker prefix and remaining content from a TODO line.
 
-    Returns ``(marker_prefix, content)`` — e.g. ``("TODO: ", "fix the bug")``.
-    If *text* does not match any pattern, returns ``("", text)``.
+    Returns ``(marker_prefix, content)`` — e.g. ``("TODO: ", "fix the bug")``. If *text*
+    does not match any pattern, returns ``("", text)``.
     """
     if patterns is None:
         patterns = DEFAULT_TODO_PATTERNS
@@ -193,10 +194,10 @@ def _join_comment_lines(lines: list[str]) -> str:
     # noinspection GrazieInspection
     """Join comment content lines, healing hyphenated words broken across lines.
 
-    When a line ends with ``<letter>-`` and the next line starts with a letter,
-    they are assumed to be fragments of a single hyphenated word and are joined
-    without an intervening space.  All other consecutive lines are joined with a
-    single space, matching the behavior of ``" ".join()``.
+    When a line ends with ``<letter>-`` and the next line starts with a letter, they are
+    assumed to be fragments of a single hyphenated word and are joined without an
+    intervening space.  All other consecutive lines are joined with a single space,
+    matching the behavior of ``" ".join()``.
     """
     if not lines:
         return ""
@@ -465,8 +466,8 @@ def show_block_diff(
 def _getch() -> str:
     """Read a single character without waiting for Enter.
 
-    Uses platform specific APIs (msvcrt on Windows, termios/tty on Unix),
-    imported conditionally at module level.
+    Uses platform specific APIs (msvcrt on Windows, termios/tty on Unix), imported
+    conditionally at module level.
     """
     if sys.platform == "win32":
         return msvcrt.getwch()
@@ -522,8 +523,8 @@ def process_content(
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
-    Returns (changed, new_content).  When *_state* is a dict and the user
-    presses quit in interactive mode, ``_state["quit"]`` is set to ``True``.
+    Returns (changed, new_content).  When *_state* is a dict and the user presses quit
+    in interactive mode, ``_state["quit"]`` is set to ``True``.
     """
     lines = content.splitlines(keepends=True)
 

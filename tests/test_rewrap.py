@@ -190,7 +190,8 @@ class TestHyphenAndLongWordHandling:
     """Tests for break_on_hyphens=False, break_long_words=False, and hyphen healing."""
 
     def test_hyphenated_word_not_broken(self):
-        """A hyphenated word near the line boundary should not be split at the hyphen."""
+        """A hyphenated word near the line boundary should not be split at the
+        hyphen."""
         block = make_block(
             [
                 "# This is a comment about a command-line-interface that should keep the hyphenated word intact.",

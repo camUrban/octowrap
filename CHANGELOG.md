@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- codespell for spell checking (pre-commit hook, CI lint step, `[tool.codespell]` config)
+- docformatter for docstring formatting (pre-commit hook, CI lint step, `[tool.docformatter]` config)
+- `.python-version` pins dev environment to Python 3.13 (docformatter's `untokenize` dependency doesn't build on 3.14)
+
 ### Fixed
 - Hyphenated words (e.g. `command-line-interface`) are no longer broken at hyphens during rewrapping (`break_on_hyphens=False`)
 - Long words and URLs are no longer broken mid-word; they overflow the line length instead of being split (`break_long_words=False`)

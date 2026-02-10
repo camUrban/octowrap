@@ -243,8 +243,8 @@ class TestShouldPreserveLine:
         assert not should_preserve_line("This is a regular comment.")
 
     def test_list_item_not_preserved(self):
-        """should_preserve_line does NOT check is_list_item; that's handled
-        separately in rewrap_comment_block."""
+        """should_preserve_line does NOT check is_list_item; that's handled separately
+        in rewrap_comment_block."""
         assert not should_preserve_line("- item one")
 
     def test_tool_directive_not_preserved(self):
@@ -380,7 +380,8 @@ class TestExtractTodoMarker:
         assert content == "fix"
 
     def test_case_sensitive_no_match(self):
-        """Lowercase 'todo' should not match uppercase pattern in case-sensitive mode."""
+        """Lowercase 'todo' should not match uppercase pattern in case-sensitive
+        mode."""
         marker, content = extract_todo_marker(
             "todo: fix", patterns=["TODO"], case_sensitive=True
         )
