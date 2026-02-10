@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Hyphenated words (e.g. `command-line-interface`) are no longer broken at hyphens during rewrapping (`break_on_hyphens=False`)
+- Long words and URLs are no longer broken mid-word; they overflow the line length instead of being split (`break_long_words=False`)
+- Previously broken hyphenated words (e.g. `re-` / `validate` on separate lines) are now healed back into `re-validate` on rewrap, fixing an idempotency bug where successive runs would corrupt hyphenated words by inserting a space (`re- validate`)
+
 ## 0.2.0 - 2026-02-07
 
 ### Changed

@@ -1,6 +1,7 @@
 import pytest
 
 from octowrap.rewrap import (
+    _join_comment_lines,
     extract_todo_marker,
     is_divider,
     is_likely_code,
@@ -409,3 +410,43 @@ class TestExtractTodoMarker:
         marker, content = extract_todo_marker("  TODO: fix")
         assert marker == "  TODO: "
         assert content == "fix"
+
+
+class TestJoinCommentLines:
+    """Tests for _join_comment_lines hyphen-aware joining."""
+
+    def test_empty_list(self):
+        assert _join_comment_lines([]) == ""
+
+    def test_single_line(self):
+        assert _join_comment_lines(["hello world"]) == "hello world"
+
+    def test_normal_join(self):
+        assert _join_comment_lines(["hello", "world"]) == "hello world"
+
+    def test_heals_broken_hyphenated_word(self):
+        assert _join_comment_lines(["re-", "validate"]) == "re-validate"
+
+    def test_heals_midsentence_hyphen_break(self):
+        result = _join_comment_lines(["some text re-", "validate the input"])
+        assert result == "some text re-validate the input"
+
+    def test_standalone_hyphen_not_healed(self):
+        """A line ending with ' -' (standalone hyphen) should not heal."""
+        assert _join_comment_lines(["use the -", "v flag"]) == "use the - v flag"
+
+    def test_double_hyphen_not_healed(self):
+        """A line ending with '--' should not heal (not letter-hyphen)."""
+        assert _join_comment_lines(["use --", "verbose"]) == "use -- verbose"
+
+    def test_hyphen_before_non_alpha(self):
+        """A line ending with letter-hyphen before a digit should not heal."""
+        assert _join_comment_lines(["phase-", "2 begins"]) == "phase- 2 begins"
+
+    def test_multiple_lines_mixed(self):
+        result = _join_comment_lines(["command-", "line-", "interface is great"])
+        assert result == "command-line-interface is great"
+
+    def test_no_heal_when_next_line_starts_with_space(self):
+        """Next line starting with space should not trigger healing."""
+        assert _join_comment_lines(["re-", " validate"]) == "re-  validate"

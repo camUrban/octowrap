@@ -10,6 +10,9 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 ## Features
 
 - Rewraps comment blocks to a configurable line length (default 88)
+- Keeps hyphenated words intact (never breaks `command-line-interface` at hyphens)
+- Keeps long words and URLs intact (they overflow the line length rather than being broken mid-word)
+- Heals previously broken hyphenated words on rewrap (e.g. `re-` / `validate` -> `re-validate`)
 - Preserves commented-out Python code (detected via 21 heuristic patterns)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
 - Preserves list items (bullets, numbered items)

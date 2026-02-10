@@ -186,6 +186,107 @@ class TestRewrapToWiderLength:
         )
 
 
+class TestHyphenAndLongWordHandling:
+    """Tests for break_on_hyphens=False, break_long_words=False, and hyphen healing."""
+
+    def test_hyphenated_word_not_broken(self):
+        """A hyphenated word near the line boundary should not be split at the hyphen."""
+        block = make_block(
+            [
+                "# This is a comment about a command-line-interface that should keep the hyphenated word intact.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=60)
+        # "command-line-interface" must appear intact in one line
+        assert any("command-line-interface" in line for line in result)
+
+    def test_long_url_not_broken(self):
+        """A URL longer than the line length should overflow rather than break."""
+        block = make_block(
+            [
+                "# See https://example.com/some/very/long/path/to/a/resource/that/exceeds/the/line/length for details.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=60)
+        assert any(
+            "https://example.com/some/very/long/path/to/a/resource/that/exceeds/the/line/length"
+            in line
+            for line in result
+        )
+
+    def test_long_word_not_broken(self):
+        """A single word longer than line width should overflow, not break mid-word."""
+        block = make_block(
+            [
+                "# See supercalifragilisticexpialidocious for details.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=40)
+        assert any("supercalifragilisticexpialidocious" in line for line in result)
+
+    def test_previously_broken_hyphen_healed(self):
+        """Lines from a previous hyphen break should be rejoined on rewrap."""
+        block = make_block(
+            [
+                "# This comment has a command-",
+                "# line word that was broken.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        full_text = " ".join(line.lstrip("# ") for line in result)
+        assert "command-line" in full_text
+        assert "command- line" not in full_text
+
+    def test_rewrap_idempotent_with_hyphens(self):
+        """Rewrapping a block twice should produce the same result."""
+        block = make_block(
+            [
+                "# The command-line-interface supports many long-running background tasks.",
+            ]
+        )
+        first = rewrap_comment_block(block, max_line_length=50)
+        second = rewrap_comment_block(make_block(first), max_line_length=50)
+        assert first == second
+
+    def test_todo_hyphenated_word_not_broken(self):
+        """Hyphenated words in TODO comments should not be broken at hyphens."""
+        block = make_block(
+            [
+                "# TODO: Implement the command-line-interface for the re-validation of user-submitted data.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=60)
+        full_text = " ".join(line.lstrip("# ") for line in result)
+        assert "command-line-interface" in full_text
+        assert "re-validation" in full_text
+
+    def test_todo_long_url_not_broken(self):
+        """A URL in a TODO should not be broken."""
+        block = make_block(
+            [
+                "# TODO: See https://example.com/some/very/long/path/to/a/resource for implementation details.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=60)
+        assert any(
+            "https://example.com/some/very/long/path/to/a/resource" in line
+            for line in result
+        )
+
+    def test_todo_previously_broken_hyphen_healed(self):
+        """TODO continuation lines with broken hyphens should be healed."""
+        block = make_block(
+            [
+                "# TODO: Fix the command-",
+                "#  line parsing bug.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        full_text = " ".join(line.lstrip("# ") for line in result)
+        assert "command-line" in full_text
+        assert "command- line" not in full_text
+
+
 class TestParsePragma:
     def test_parse_pragma_off(self):
         assert parse_pragma("# octowrap: off") == "off"

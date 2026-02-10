@@ -188,6 +188,25 @@ def extract_todo_marker(
     return ("", text)
 
 
+def _join_comment_lines(lines: list[str]) -> str:
+    """Join comment content lines, healing hyphenated words broken across lines.
+
+    When a line ends with ``<letter>-`` and the next line starts with a letter,
+    they are assumed to be fragments of a single hyphenated word and are joined
+    without an intervening space.  All other consecutive lines are joined with a
+    single space, matching the behaviour of ``" ".join()``.
+    """
+    if not lines:
+        return ""
+    result = lines[0]
+    for line in lines[1:]:
+        if re.search(r"[a-zA-Z]-$", result) and line and line[0].isalpha():
+            result += line
+        else:
+            result += " " + line
+    return result
+
+
 def should_preserve_line(text: str) -> bool:
     """Determine if a comment line should be preserved as is."""
     if not text.strip():
@@ -355,7 +374,7 @@ def rewrap_comment_block(
             )
             # Join first-line content + stripped continuation lines
             parts = [first_content] + [c.strip() for c in para_contents[1:]]
-            full_text = " ".join(parts).strip()
+            full_text = _join_comment_lines(parts).strip()
 
             # If there is no content after the TODO marker (e.g. "# TODO:"), preserve
             # the original lines instead of emitting a blank line.
@@ -378,11 +397,15 @@ def rewrap_comment_block(
                         width=max_line_length,
                         initial_indent=initial,
                         subsequent_indent=subsequent,
+                        break_on_hyphens=False,
+                        break_long_words=False,
                     )
                     result.extend(wrapped.split("\n"))
         else:  # wrap
-            text = " ".join(para_contents)
-            wrapped = textwrap.fill(text, width=text_width)
+            text = _join_comment_lines(para_contents)
+            wrapped = textwrap.fill(
+                text, width=text_width, break_on_hyphens=False, break_long_words=False
+            )
             for wrapped_line in wrapped.split("\n"):
                 result.append(prefix + wrapped_line)
 
@@ -799,8 +822,8 @@ def main():
     if "todo-patterns" in config:
         todo_patterns = config["todo-patterns"]
         if not todo_patterns:
-            # Explicit empty list disables TODO detection entirely; ignore extend-todo-
-            # patterns.
+            # Explicit empty list disables TODO detection entirely; ignore
+            # extend-todo-patterns.
             pass
         elif "extend-todo-patterns" in config:
             todo_patterns = todo_patterns + config["extend-todo-patterns"]

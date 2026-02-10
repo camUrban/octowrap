@@ -46,7 +46,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
    - `is_tool_directive()`: tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, PEP 484 type comments)
    - `is_todo_marker()`: detects TODO/FIXME-style markers (configurable patterns, case-insensitive by default, no colon required)
    - `is_todo_continuation()`: detects one-space-indented continuation lines for multi-line TODOs
-8. **Rewrapping** (`rewrap_comment_block()`): uses `textwrap.fill()` respecting indent and max line length (min text width: 20 chars). TODO markers are rewrapped with their marker prefix on the first line and one-space continuation indent on subsequent lines.
+8. **Rewrapping** (`rewrap_comment_block()`): uses `textwrap.fill()` with `break_on_hyphens=False` and `break_long_words=False`, respecting indent and max line length (min text width: 20 chars). Hyphenated words and URLs are kept intact (long words overflow rather than break). `_join_comment_lines()` heals previously broken hyphenated words when re-joining lines. TODO markers are rewrapped with their marker prefix on the first line and one-space continuation indent on subsequent lines.
 9. **Output**: interactive per block approval (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit) with colorized diffs showing the relative filepath, or batch mode. The `e` action wraps the original block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it. Quitting stops all processing, including remaining files in a multi file run.
 
 ### Key functions
