@@ -804,12 +804,22 @@ def process_content(
         if block["type"] == "code":
             if not disabled and inline:
                 for line_idx, line in enumerate(block["lines"]):
-                    if user_quit or not _should_extract_inline(line, max_line_length):
+                    if user_quit:
+                        new_lines.append(line)
+                        continue
+
+                    # Only consider lines that exceed the maximum length.
+                    if len(line.rstrip("\n")) <= max_line_length:
                         new_lines.append(line)
                         continue
 
                     # Extract the inline comment and build replacement lines.
-                    code_part, comment_text = extract_inline_comment(line)  # type: ignore[misc]
+                    extracted = extract_inline_comment(line)
+                    if not extracted:
+                        new_lines.append(line)
+                        continue
+
+                    code_part, comment_text = extracted
                     indent = " " * (len(line) - len(line.lstrip()))
                     synthetic = {
                         "type": "comment_block",
