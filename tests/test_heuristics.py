@@ -1,5 +1,6 @@
 import pytest
 
+# noinspection PyProtectedMember
 from octowrap.rewrap import (
     _join_comment_lines,
     extract_todo_marker,

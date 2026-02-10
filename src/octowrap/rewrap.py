@@ -184,8 +184,8 @@ def extract_todo_marker(
     for p in sorted(patterns, key=lambda s: len(s), reverse=True):
         m = re.match(rf"({re.escape(p)}\b\s*:?\s*)(.*)", stripped, flags)
         if m:
-            return (leading + m.group(1), m.group(2))
-    return ("", text)
+            return leading + m.group(1), m.group(2)
+    return "", text
 
 
 def _join_comment_lines(lines: list[str]) -> str:
@@ -194,7 +194,7 @@ def _join_comment_lines(lines: list[str]) -> str:
     When a line ends with ``<letter>-`` and the next line starts with a letter,
     they are assumed to be fragments of a single hyphenated word and are joined
     without an intervening space.  All other consecutive lines are joined with a
-    single space, matching the behaviour of ``" ".join()``.
+    single space, matching the behavior of ``" ".join()``.
     """
     if not lines:
         return ""

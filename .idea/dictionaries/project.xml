@@ -13,6 +13,7 @@
       <w>octowrap's</w>
       <w>rewrappable</w>
       <w>skipif</w>
+      <w>superlongpatternname</w>
       <w>tcgetattr</w>
       <w>tcsadrain</w>
       <w>tcsetattr</w>

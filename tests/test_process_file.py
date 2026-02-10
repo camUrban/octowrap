@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+# noinspection PyProtectedMember
 from octowrap.rewrap import _relative_path, process_content, process_file
 
 
