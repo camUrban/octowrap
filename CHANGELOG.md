@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-02-09
 
 ### Added
+- An editor integration section to `README.md` that describes setting up octowrap as a PyCharm file watcher
 - `--stdin-filename` flag for editor integrations: provides a filename for config discovery (finds the right `pyproject.toml` based on the file's location) and diff display labels when piping via stdin
 - `f` (flag) action in interactive mode (`-i`) that inserts a `# FIXME: Manually fix the below comment` marker above the original block for later human attention, without modifying the block itself
 - codespell for spell checking (pre-commit hook, CI lint step, `[tool.codespell]` config)

@@ -132,6 +132,18 @@ Use pragma comments to protect regions of a file from rewrapping, similar to `# 
 - `# octowrap: off` without a matching `on` disables rewrapping through end of file
 - Pragma lines themselves are always preserved as-is
 
+## Editor Integration
+
+### PyCharm
+
+Settings -> Tools -> File Watchers -> Add:
+
+- **File type:** Python
+- **Program:** `$ProjectFileDir$/.venv/Scripts/octowrap.exe` (or `.venv/bin/octowrap` on Unix)
+- **Arguments:** `$FilePath$`
+- **Output paths to refresh:** `$FilePath$`
+- **Working directory:** `$ProjectFileDir$`
+
 ## Pre-commit Hook
 
 Add octowrap to your `.pre-commit-config.yaml`:
