@@ -912,7 +912,7 @@ class TestInteractiveProgress:
             # files have the same content, so use a counter.
             calls[0] += 1
             if calls[0] == 1:
-                raise RuntimeError("fake pre-scan error")
+                raise OSError("fake pre-scan error")
             return real_count(content, *a, **kw)
 
         monkeypatch.setattr(mod, "count_changed_blocks", failing_count)
@@ -944,7 +944,7 @@ class TestNoInlineFlag:
         assert "0 file(s) reformatted." in out
 
     def test_default_extracts_inline(self, tmp_path, monkeypatch, capsys):
-        """By default (no --no-inline), overflowing inline comments are extracted."""
+        """By default, overflowing inline comments are extracted."""
         f = tmp_path / "a.py"
         f.write_bytes(self.INLINE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", str(f)])

@@ -512,3 +512,193 @@ class TestTodoRewrap:
         result = rewrap_comment_block(block, max_line_length=88)
         assert "# Some prose before the todo." in result
         assert "# TODO: fix this bug" in result
+
+
+class TestListWrap:
+    """Tests for list item wrapping in rewrap_comment_block."""
+
+    def test_long_bullet_wraps_with_hanging_indent(self):
+        """A long bullet item should wrap with hanging indent aligned to text."""
+        block = make_block(
+            [
+                "# - This is a very long bullet item that definitely exceeds the fifty character line length limit",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=50)
+        assert result[0].startswith("# - This is a very")
+        for line in result[1:]:
+            assert line.startswith("#   ")  # 2 spaces for "- " marker
+        for line in result:
+            assert len(line) <= 50
+
+    def test_long_numbered_wraps_with_hanging_indent(self):
+        """A long numbered item should wrap with hanging indent."""
+        block = make_block(
+            [
+                "# 1. This is a very long numbered item that exceeds the fifty character line length limit",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=50)
+        assert result[0].startswith("# 1. This is")
+        for line in result[1:]:
+            assert line.startswith("#    ")  # 3 spaces for "1. " marker
+        for line in result:
+            assert len(line) <= 50
+
+    def test_nested_list_items_wrap_independently(self):
+        """Nested list items should each wrap at their own indent level."""
+        block = make_block(
+            [
+                "# - Top level item that is short",
+                "#   - Nested item that is quite long and should definitely be wrapped to the target length",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=50)
+        assert "# - Top level item that is short" in result
+        # Nested item continuation should have 4-space hanging indent
+        nested_lines = [line for line in result if line.startswith("#     ")]
+        assert len(nested_lines) > 0
+
+    def test_list_item_with_continuation_collected(self):
+        """Indented continuation lines should be collected into the list item."""
+        block = make_block(
+            [
+                "# - This is a list item with",
+                "#   continuation text that was",
+                "#   previously wrapped short.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        # All text should be joined into one or fewer lines
+        full_text = " ".join(line.lstrip("# ") for line in result)
+        assert "list item with" in full_text
+        assert "continuation text" in full_text
+        assert "previously wrapped short" in full_text
+
+    def test_short_list_items_unchanged(self):
+        """Short list items that fit should remain unchanged."""
+        block = make_block(
+            [
+                "# - Short item one",
+                "# - Short item two",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# - Short item one" in result
+        assert "# - Short item two" in result
+
+    def test_mixed_prose_and_list(self):
+        """Prose wraps normally, list items wrap with markers."""
+        block = make_block(
+            [
+                "# This function does several things:",
+                "# - Validates the input parameters that are passed to the function by the caller",
+                "# - Returns the result",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=50)
+        # Prose should be wrapped
+        assert any("This function" in line for line in result)
+        # List items should have hanging indent
+        assert any(line.startswith("# - Validates") for line in result)
+        assert any(line.startswith("# - Returns") for line in result)
+
+    def test_list_wrap_false_preserves_verbatim(self):
+        """With list_wrap=False, list items are preserved as-is."""
+        block = make_block(
+            [
+                "# - This is a very long bullet item that definitely exceeds the eighty-eight character line length limit and should be preserved",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88, list_wrap=False)
+        assert result == block["lines"]
+
+    def test_bare_marker_preserved(self):
+        """A bare marker with no content should be preserved."""
+        block = make_block(["# - "])
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert result == ["# - "]
+
+    def test_too_narrow_preserves(self):
+        """When the marker makes the available width < 10, preserve as-is."""
+        block = make_block(
+            ["# - This item should be preserved due to narrow width"],
+        )
+        # prefix "# " (2) + marker "- " (2) = 4 from content start. With indent="",
+        # initial = "# - " (4 chars), width=12, first_width=12-4=8 (<10)
+        result = rewrap_comment_block(block, max_line_length=12)
+        assert result == ["# - This item should be preserved due to narrow width"]
+
+    def test_rewrap_idempotent(self):
+        """Rewrapping a list block twice should produce the same result."""
+        block = make_block(
+            [
+                "# - This is a long bullet item that should be wrapped nicely to the target width limit.",
+            ]
+        )
+        first = rewrap_comment_block(block, max_line_length=50)
+        second = rewrap_comment_block(make_block(first), max_line_length=50)
+        assert first == second
+
+    def test_continuation_stops_at_sibling_item(self):
+        """Continuation collection should stop at a sibling list item."""
+        block = make_block(
+            [
+                "# - First item with",
+                "#   some continuation",
+                "# - Second item",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# - First item with some continuation" in result
+        assert "# - Second item" in result
+
+    def test_continuation_stops_at_preserved_line(self):
+        """Continuation collection should stop at a preserved line."""
+        block = make_block(
+            [
+                "# - A list item",
+                "#   x = 5",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# - A list item" in result
+        assert "#   x = 5" in result
+
+    def test_continuation_stops_at_blank_line(self):
+        """A blank comment line should stop continuation collection."""
+        block = make_block(
+            [
+                "# - First item",
+                "#",
+                "# More text",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# - First item" in result
+        assert "#" in result
+        assert "# More text" in result
+
+    def test_continuation_stops_at_insufficient_indent(self):
+        """A non-indented prose line should not be collected as continuation."""
+        block = make_block(
+            [
+                "# - First item",
+                "# not a continuation",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# - First item" in result
+        assert "# not a continuation" in result
+
+    def test_deeply_nested_too_narrow_preserves(self):
+        """A deeply nested list marker that makes available width < 10 preserves."""
+        # Content "          - text" has marker "          - " (12 chars).
+        # initial = "# " + "          - " = 14 chars.
+        # At width 22: first_width = 22-14 = 8 < 10, triggers preserve.
+        # text_width = 22-2 = 20 >= 20, so the early return does not fire.
+        block = make_block(
+            ["#           - deeply nested item"],
+        )
+        result = rewrap_comment_block(block, max_line_length=22)
+        assert result == ["#           - deeply nested item"]

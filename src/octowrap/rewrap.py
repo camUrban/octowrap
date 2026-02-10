@@ -6,7 +6,7 @@ rewraps them using textwrap. It preserves:
 - Section dividers (lines of repeated characters like # ---- or # ====)
 - Short inline comments (# after code on the same line, within line length)
 - Intentional short lines and blank comment lines
-- Lists and bullet points
+- Lists and bullet points (rewrapped with hanging indent when list-wrap is enabled)
 """
 
 import argparse
@@ -46,6 +46,7 @@ DEFAULT_EXCLUDES: list[str] = [
 DEFAULT_TODO_PATTERNS: list[str] = ["todo", "fixme"]
 DEFAULT_TODO_CASE_SENSITIVE: bool = False
 DEFAULT_TODO_MULTILINE: bool = True
+DEFAULT_LIST_WRAP: bool = True
 
 
 def is_excluded(path: Path, exclude_patterns: list[str]) -> bool:
@@ -159,7 +160,7 @@ def find_inline_comment(line: str) -> int | None:
     are ignored.  Returns ``None`` when the ``
     before it) or when no ``#`` exists outside strings.
 
-    .. note::
+    Note:
 
        This function does **not** track multi-line string state across lines, matching
        the limitation of the existing block parser.
@@ -283,6 +284,25 @@ def extract_todo_marker(
     return "", text
 
 
+def extract_list_marker(text: str) -> tuple[str, str]:
+    """Extract list marker prefix and remaining content.
+
+    Returns ``(marker_prefix, content)`` — e.g. ``("- ", "fix the bug")`` or
+    ``("  1. ", "first item")``.  The *marker_prefix* includes any leading whitespace
+    (nesting indent).  Returns ``("", text)`` on no match.
+    """
+    list_patterns = [
+        r"^(\s*[-*•]\s+)(.*)",  # bullet points
+        r"^(\s*\d+[.)]\s+)(.*)",  # numbered lists
+        r"^(\s*[a-zA-Z][.)]\s+)(.*)",  # lettered lists
+    ]
+    for p in list_patterns:
+        m = re.match(p, text)
+        if m:
+            return m.group(1), m.group(2)
+    return "", text
+
+
 def _join_comment_lines(lines: list[str]) -> str:
     # noinspection GrazieInspection
     """Join comment content lines, healing line-break artifacts.
@@ -389,6 +409,7 @@ def rewrap_comment_block(
     todo_patterns: list[str] | None = None,
     todo_case_sensitive: bool = False,
     todo_multiline: bool = True,
+    list_wrap: bool = True,
 ) -> list[str]:
     """Rewrap a comment block to the specified line length."""
     indent = block["indent"]
@@ -429,6 +450,34 @@ def rewrap_comment_block(
                 paragraphs.append(("wrap", current_para))
                 current_para = []
             paragraphs.append(("blank", [""]))
+        elif is_list_item(content) and list_wrap:
+            # Flush current paragraph
+            if current_para:
+                paragraphs.append(("wrap", current_para))
+                current_para = []
+            marker_prefix, _ = extract_list_marker(content)
+            cont_indent_len = len(marker_prefix)
+            list_lines = [content]
+            # Collect continuation lines (indented to at least text-start column)
+            while i + 1 < len(contents):
+                next_content = contents[i + 1]
+                if not next_content.strip():
+                    break
+                if is_list_item(next_content):
+                    break  # sibling or nested item — its own paragraph
+                if (
+                    should_preserve_line(next_content)
+                    or is_tool_directive(next_content)
+                    or is_todo_marker(next_content, todo_patterns, todo_case_sensitive)
+                ):
+                    break
+                actual_indent = len(next_content) - len(next_content.lstrip())
+                if actual_indent >= cont_indent_len:
+                    i += 1
+                    list_lines.append(contents[i])
+                else:
+                    break
+            paragraphs.append(("list", list_lines))
         elif (
             should_preserve_line(content)
             or is_list_item(content)
@@ -504,6 +553,34 @@ def rewrap_comment_block(
                         break_long_words=False,
                     )
                     result.extend(wrapped.split("\n"))
+        elif para_type == "list":
+            marker_prefix, first_content = extract_list_marker(para_contents[0])
+            parts = [first_content] + [c.strip() for c in para_contents[1:]]
+            full_text = _join_comment_lines(parts).strip()
+
+            if not full_text:
+                # Bare marker with no content (e.g. "# -") — preserve
+                for content in para_contents:
+                    result.append(prefix + content)
+            else:
+                initial = prefix + marker_prefix
+                subsequent = prefix + " " * len(marker_prefix)
+                first_width = max_line_length - len(initial)
+                cont_width = max_line_length - len(subsequent)
+
+                if first_width < 10 or cont_width < 10:
+                    for content in para_contents:
+                        result.append(prefix + content)
+                else:
+                    wrapped = textwrap.fill(
+                        full_text,
+                        width=max_line_length,
+                        initial_indent=initial,
+                        subsequent_indent=subsequent,
+                        break_on_hyphens=False,
+                        break_long_words=False,
+                    )
+                    result.extend(wrapped.split("\n"))
         else:  # wrap
             text = _join_comment_lines(para_contents)
             wrapped = textwrap.fill(
@@ -533,6 +610,7 @@ def count_changed_blocks(
     todo_case_sensitive: bool = False,
     todo_multiline: bool = True,
     inline: bool = True,
+    list_wrap: bool = True,
 ) -> int:
     """Count comment blocks that will be interactively prompted.
 
@@ -574,6 +652,7 @@ def count_changed_blocks(
             todo_patterns=todo_patterns,
             todo_case_sensitive=todo_case_sensitive,
             todo_multiline=todo_multiline,
+            list_wrap=list_wrap,
         )
         if rewrapped != block["lines"]:
             count += 1
@@ -698,6 +777,7 @@ def process_content(
     todo_case_sensitive: bool = False,
     todo_multiline: bool = True,
     inline: bool = True,
+    list_wrap: bool = True,
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
@@ -739,6 +819,7 @@ def process_content(
                         todo_patterns=todo_patterns,
                         todo_case_sensitive=todo_case_sensitive,
                         todo_multiline=todo_multiline,
+                        list_wrap=list_wrap,
                     )
                     replacement = wrapped_comment + [code_part]
 
@@ -841,6 +922,7 @@ def process_content(
                                     todo_patterns=todo_patterns,
                                     todo_case_sensitive=todo_case_sensitive,
                                     todo_multiline=todo_multiline,
+                                    list_wrap=list_wrap,
                                 )
                             )
                         segment_start += len(segment_lines)
@@ -870,6 +952,7 @@ def process_content(
                             todo_patterns=todo_patterns,
                             todo_case_sensitive=todo_case_sensitive,
                             todo_multiline=todo_multiline,
+                            list_wrap=list_wrap,
                         )
                     )
             continue
@@ -886,6 +969,7 @@ def process_content(
             todo_patterns=todo_patterns,
             todo_case_sensitive=todo_case_sensitive,
             todo_multiline=todo_multiline,
+            list_wrap=list_wrap,
         )
 
         if not interactive:
@@ -991,6 +1075,7 @@ def process_file(
     todo_case_sensitive: bool = False,
     todo_multiline: bool = True,
     inline: bool = True,
+    list_wrap: bool = True,
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
@@ -1009,6 +1094,7 @@ def process_file(
         todo_case_sensitive=todo_case_sensitive,
         todo_multiline=todo_multiline,
         inline=inline,
+        list_wrap=list_wrap,
     )
 
     if changed and not dry_run:
@@ -1163,6 +1249,7 @@ def main():
         todo_patterns = todo_patterns + config["extend-todo-patterns"]
     todo_case_sensitive = config.get("todo-case-sensitive", DEFAULT_TODO_CASE_SENSITIVE)
     todo_multiline = config.get("todo-multiline", DEFAULT_TODO_MULTILINE)
+    list_wrap = config.get("list-wrap", DEFAULT_LIST_WRAP)
 
     if args.diff or args.check:
         args.dry_run = True
@@ -1199,6 +1286,7 @@ def main():
             todo_case_sensitive=todo_case_sensitive,
             todo_multiline=todo_multiline,
             inline=args.inline,
+            list_wrap=list_wrap,
         )
 
         if args.diff and changed:
@@ -1253,8 +1341,9 @@ def main():
                     todo_case_sensitive=todo_case_sensitive,
                     todo_multiline=todo_multiline,
                     inline=args.inline,
+                    list_wrap=list_wrap,
                 )
-            except Exception:
+            except OSError:
                 pass  # Errors will be reported during the actual processing pass.
         interactive_state["block_total"] = total_blocks
         interactive_state["block_current"] = 0
@@ -1274,6 +1363,7 @@ def main():
                 todo_case_sensitive=todo_case_sensitive,
                 todo_multiline=todo_multiline,
                 inline=args.inline,
+                list_wrap=list_wrap,
             )
 
             if changed:

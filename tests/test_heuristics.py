@@ -4,6 +4,7 @@ import pytest
 from octowrap.rewrap import (
     _join_comment_lines,
     _looks_like_prose,
+    extract_list_marker,
     extract_todo_marker,
     is_divider,
     is_likely_code,
@@ -613,3 +614,57 @@ class TestJoinCommentLines:
             "CG) on each Panel."
         )
         assert _join_comment_lines(lines) == expected
+
+
+class TestExtractListMarker:
+    """Tests for extract_list_marker()."""
+
+    def test_bullet_dash(self):
+        marker, content = extract_list_marker("- item")
+        assert marker == "- "
+        assert content == "item"
+
+    def test_bullet_star(self):
+        marker, content = extract_list_marker("* item")
+        assert marker == "* "
+        assert content == "item"
+
+    def test_numbered_dot(self):
+        marker, content = extract_list_marker("1. item")
+        assert marker == "1. "
+        assert content == "item"
+
+    def test_numbered_paren(self):
+        marker, content = extract_list_marker("1) item")
+        assert marker == "1) "
+        assert content == "item"
+
+    def test_lettered_dot(self):
+        marker, content = extract_list_marker("a. item")
+        assert marker == "a. "
+        assert content == "item"
+
+    def test_lettered_paren(self):
+        marker, content = extract_list_marker("a) item")
+        assert marker == "a) "
+        assert content == "item"
+
+    def test_nested_bullet(self):
+        marker, content = extract_list_marker("  - nested")
+        assert marker == "  - "
+        assert content == "nested"
+
+    def test_no_match(self):
+        marker, content = extract_list_marker("just prose")
+        assert marker == ""
+        assert content == "just prose"
+
+    def test_multi_digit_number(self):
+        marker, content = extract_list_marker("12. twelfth item")
+        assert marker == "12. "
+        assert content == "twelfth item"
+
+    def test_empty_content(self):
+        marker, content = extract_list_marker("- ")
+        assert marker == "- "
+        assert content == ""

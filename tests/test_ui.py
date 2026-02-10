@@ -211,9 +211,9 @@ class TestPromptUser:
         captured = []
         original_colorize = colorize
 
-        def spy(text, color):
-            captured.append(color)
-            return original_colorize(text, color)
+        def spy(text, this_color):
+            captured.append(this_color)
+            return original_colorize(text, this_color)
 
         monkeypatch.setattr(mod, "colorize", spy)
         prompt_user()

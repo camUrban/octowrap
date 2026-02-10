@@ -14,6 +14,7 @@ _SCALAR_KEYS: dict[str, type] = {
     "inline": bool,
     "todo-case-sensitive": bool,
     "todo-multiline": bool,
+    "list-wrap": bool,
 }
 
 _LIST_STR_KEYS: set[str] = {

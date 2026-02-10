@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- List item wrapping: long list items (bullets, numbered, lettered) are now rewrapped with hanging indent aligned to the text after the marker. Continuation lines indented to the marker's text column are collected before wrapping. Nesting is handled naturally — each item wraps independently at its own indent level. Disable with `list-wrap = false` in config.
+- `list-wrap` config key (bool, default `true`) in `[tool.octowrap]`
 - Inline comment extraction: when a code line with an inline comment (`code  # comment`) exceeds the line length, the comment is extracted into a standalone block comment above the code line and wrapped normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline` or `inline = false` in config.
 - `--no-inline` CLI flag to disable inline comment extraction
 - `inline` config key (bool, default `true`) in `[tool.octowrap]`

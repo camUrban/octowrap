@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
 [![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
 
-A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, list items, and tool directives. TODO/FIXME markers are intelligently rewrapped with continuation indentation. Overflowing inline comments are extracted into standalone block comments and wrapped normally.
+A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, and tool directives. List items are rewrapped with hanging indent. TODO/FIXME markers are intelligently rewrapped with continuation indentation. Overflowing inline comments are extracted into standalone block comments and wrapped normally.
 
 ## Features
 
@@ -16,7 +16,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Heals erroneous spaces at bracket boundaries on rewrap (e.g. `( text)` -> `(text)`, `text )` -> `text)`)
 - Preserves commented-out Python code (detected via 21 heuristic patterns with a prose disqualifier to avoid false positives on natural English)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
-- Preserves list items (bullets, numbered items)
+- Rewraps list items (bullets, numbered, lettered) with hanging indent aligned to the text after the marker; collects continuation lines and handles nesting naturally. Disable with `list-wrap = false`.
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
 - Extracts overflowing inline comments (`code  # comment`) into standalone block comments above the code line when the line exceeds the line length, then wraps them normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline`.
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
@@ -134,6 +134,36 @@ todo-multiline = false                       # don't collect continuations
 
 Setting `todo-patterns = []` disables TODO detection entirely, causing former TODO lines to be rewrapped as regular prose.
 
+## List Item Wrapping
+
+Long list items are rewrapped with hanging indent aligned to the text after the marker:
+
+Before:
+
+```python
+# - This is a very long bullet point that exceeds the line length and should be wrapped to fit within the configured width.
+# 1. This is a very long numbered item that also exceeds the line length and needs to be wrapped properly.
+```
+
+After (`--line-length 72`):
+
+```python
+# - This is a very long bullet point that exceeds the line length and
+#   should be wrapped to fit within the configured width.
+# 1. This is a very long numbered item that also exceeds the line length
+#    and needs to be wrapped properly.
+```
+
+Nesting is handled naturally — each item wraps independently at its own indent level:
+
+```python
+# - Top-level item
+#   - Nested item that is quite long and will be wrapped with its own
+#     hanging indent aligned to the nested marker
+```
+
+Continuation lines indented to at least the marker's text column are collected and rewrapped together. Disable with `list-wrap = false` in `pyproject.toml`.
+
 ## Disabling Rewrapping
 
 Use pragma comments to protect regions of a file from rewrapping, similar to `# fmt: off/on` in black/ruff:
@@ -218,6 +248,7 @@ extend-exclude = ["vendor"]
 | `line-length`          | int       | 88                  | `--line-length`  |
 | `recursive`            | bool      | true                | `--no-recursive` |
 | `inline`               | bool      | true                | `--no-inline`    |
+| `list-wrap`            | bool      | true                | —                |
 | `exclude`              | list[str] | —                   | —                |
 | `extend-exclude`       | list[str] | —                   | —                |
 | `todo-patterns`        | list[str] | `["todo", "fixme"]` | —                |

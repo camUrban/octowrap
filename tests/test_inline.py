@@ -1,3 +1,4 @@
+# noinspection PyProtectedMember
 from octowrap.rewrap import (
     _should_extract_inline,
     count_changed_blocks,
@@ -137,7 +138,7 @@ class TestProcessContentInline:
         assert result == content
 
     def test_noqa_preserved(self):
-        """noqa directives are never extracted."""
+        """Noqa directives are never extracted."""
         code = "x" * 80
         content = f"{code}  # noqa: E501\n"
         changed, result = process_content(content, max_line_length=88)
@@ -307,7 +308,8 @@ class TestInlineInteractive:
         )
 
     def test_accept_all(self, tmp_path, monkeypatch):
-        """Accept-all applies extraction to current and all remaining inline comments."""
+        """Accept-all applies extraction to current and all remaining inline
+        comments."""
         f = tmp_path / "t.py"
         f.write_bytes(TWO_INLINE_CONTENT)
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "A")
@@ -317,7 +319,8 @@ class TestInlineInteractive:
         assert "# Second comment" in content
 
     def test_accept_all_skips_prompting(self, tmp_path, monkeypatch):
-        """After accept-all, prompt_user is not called for subsequent inline comments."""
+        """After accept-all, prompt_user is not called for subsequent inline
+        comments."""
         f = tmp_path / "t.py"
         f.write_bytes(TWO_INLINE_CONTENT)
         call_count = 0
