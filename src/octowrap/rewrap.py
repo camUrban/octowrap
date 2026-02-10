@@ -20,7 +20,7 @@ import tempfile
 import textwrap
 from pathlib import Path
 
-from octowrap.config import ConfigError, load_config
+from octowrap.config import ConfigError, find_config_file, load_config
 
 # Platform specific imports for single keypress input (_getch). msvcrt is Windows only;
 # termios/tty are Unix only. The type: ignore comments suppress errors from type
@@ -66,21 +66,39 @@ def is_excluded(path: Path, exclude_patterns: list[str]) -> bool:
     return False
 
 
+def _looks_like_prose(text: str) -> bool:
+    """Return True if *text* looks like natural-language prose.
+
+    Called as a second pass after a code-pattern matched, to rescue false positives such
+    as "if the server is down:" or "return the result".
+    """
+    lower = text.strip().lower()
+    determiners = r"(?:the|this|that|these|those)"
+    keywords = r"(?:if|while|with|return|raise|import|assert|yield)"
+    # keyword + determiner + word  (e.g. "if the server …")
+    if re.match(rf"{keywords}\s+{determiners}\s+[a-z]", lower):
+        return True
+    # "return to …"  (e.g. "return to the caller")
+    if re.match(r"return\s+to\s+", lower):
+        return True
+    return False
+
+
 def is_likely_code(text: str) -> bool:
     """Heuristic: detect if a comment line is probably commented out code."""
     code_patterns = [
         r"^\s*[\w_]+\s*=",  # assignment
-        r"^\s*def\s+\w+",  # function def
+        r"^\s*def\s+\w+\s*\(",  # function def
         r"^\s*class\s+\w+",  # class def
         r"^\s*import\s+",  # import
         r"^\s*from\s+\w+\s+import",  # from import
         r"^\s*if\s+.*:",  # if statement
-        r"^\s*for\s+.*:",  # for loop
+        r"^\s*for\s+\w+(?:\s*,\s*\w+)*\s+in\s+",  # for loop
         r"^\s*while\s+.*:",  # while loop
         r"^\s*return\s+",  # return
         r"^\s*raise\s+",  # raise
         r"^\s*try\s*:",  # try
-        r"^\s*except\s*",  # except
+        r"^\s*except\s*($|[:(]|[A-Z])",  # except
         r"^\s*with\s+.*:",  # with statement
         r"^\s*assert\s+",  # assert
         r"^\s*yield\s+",  # yield
@@ -88,10 +106,14 @@ def is_likely_code(text: str) -> bool:
         r"^\s*@\w+",  # decorator
         r"^\s*print\s*\(",  # print call
         r"^\s*self\.",  # self reference
-        r"^\s*\w+\.\w+\s*\(",  # method call
+        r"^\s*\w+\.\w+\(",  # method call
         r"^\s*\w+\s*\([^)]*\)\s*$",  # function call
     ]
-    return any(re.match(p, text) for p in code_patterns)
+    if not any(re.match(p, text) for p in code_patterns):
+        return False
+    if _looks_like_prose(text):
+        return False
+    return True
 
 
 def is_divider(text: str) -> bool:
@@ -118,7 +140,8 @@ def is_list_item(text: str) -> bool:
 
 
 def is_tool_directive(text: str) -> bool:
-    """Check if a comment line is a tool directive (type: ignore, noqa, fmt: off, etc.)."""
+    """Check if a comment line is a tool directive (type: ignore, noqa, fmt: off,
+    etc.)."""
     directive_patterns = [
         r"type:\s*ignore",  # mypy/pyright inline suppression
         r"noqa(\s*:\s*\S+)?$",  # flake8/ruff lint suppression
@@ -142,8 +165,8 @@ def is_todo_marker(
 ) -> bool:
     """Check if *text* starts with a TODO/FIXME-style marker.
 
-    Matches at the start of *text* (after optional whitespace) so that
-    continuation lines with a leading space do **not** match.
+    Matches at the start of *text* (after optional whitespace) so that continuation
+    lines with a leading space do **not** match.
     """
     if patterns is None:
         patterns = DEFAULT_TODO_PATTERNS
@@ -160,8 +183,8 @@ def is_todo_marker(
 def is_todo_continuation(text: str) -> bool:
     """Return ``True`` if *text* looks like a TODO continuation line.
 
-    A continuation line starts with exactly one space and has
-    non-whitespace content after it.
+    A continuation line starts with exactly one space and has non-whitespace content
+    after it.
     """
     return text.startswith(" ") and not text.startswith("  ") and text.strip() != ""
 
@@ -171,10 +194,11 @@ def extract_todo_marker(
     patterns: list[str] | None = None,
     case_sensitive: bool = False,
 ) -> tuple[str, str]:
+    # noinspection GrazieInspection
     """Extract the marker prefix and remaining content from a TODO line.
 
-    Returns ``(marker_prefix, content)`` — e.g. ``("TODO: ", "fix the bug")``.
-    If *text* does not match any pattern, returns ``("", text)``.
+    Returns ``(marker_prefix, content)`` — e.g. ``("TODO: ", "fix the bug")``. If *text*
+    does not match any pattern, returns ``("", text)``.
     """
     if patterns is None:
         patterns = DEFAULT_TODO_PATTERNS
@@ -184,8 +208,28 @@ def extract_todo_marker(
     for p in sorted(patterns, key=lambda s: len(s), reverse=True):
         m = re.match(rf"({re.escape(p)}\b\s*:?\s*)(.*)", stripped, flags)
         if m:
-            return (leading + m.group(1), m.group(2))
-    return ("", text)
+            return leading + m.group(1), m.group(2)
+    return "", text
+
+
+def _join_comment_lines(lines: list[str]) -> str:
+    # noinspection GrazieInspection
+    """Join comment content lines, healing hyphenated words broken across lines.
+
+    When a line ends with ``<letter>-`` and the next line starts with a letter, they are
+    assumed to be fragments of a single hyphenated word and are joined without an
+    intervening space.  All other consecutive lines are joined with a single space,
+    matching the behavior of ``" ".join()``.
+    """
+    if not lines:
+        return ""
+    result = lines[0]
+    for line in lines[1:]:
+        if re.search(r"[a-zA-Z]-$", result) and line and line[0].isalpha():
+            result += line
+        else:
+            result += " " + line
+    return result
 
 
 def should_preserve_line(text: str) -> bool:
@@ -346,7 +390,7 @@ def rewrap_comment_block(
                 if content:
                     result.append(prefix + content)
                 else:
-                    # Defensive: preserved lines always have non empty content since
+                    # Defensive: preserved lines always have non-empty content since
                     # blank lines are handled above.
                     result.append(indent + "#")  # pragma: no cover
         elif para_type == "todo":
@@ -355,7 +399,7 @@ def rewrap_comment_block(
             )
             # Join first-line content + stripped continuation lines
             parts = [first_content] + [c.strip() for c in para_contents[1:]]
-            full_text = " ".join(parts).strip()
+            full_text = _join_comment_lines(parts).strip()
 
             # If there is no content after the TODO marker (e.g. "# TODO:"), preserve
             # the original lines instead of emitting a blank line.
@@ -378,11 +422,15 @@ def rewrap_comment_block(
                         width=max_line_length,
                         initial_indent=initial,
                         subsequent_indent=subsequent,
+                        break_on_hyphens=False,
+                        break_long_words=False,
                     )
                     result.extend(wrapped.split("\n"))
         else:  # wrap
-            text = " ".join(para_contents)
-            wrapped = textwrap.fill(text, width=text_width)
+            text = _join_comment_lines(para_contents)
+            wrapped = textwrap.fill(
+                text, width=text_width, break_on_hyphens=False, break_long_words=False
+            )
             for wrapped_line in wrapped.split("\n"):
                 result.append(prefix + wrapped_line)
 
@@ -440,8 +488,8 @@ def show_block_diff(
 def _getch() -> str:
     """Read a single character without waiting for Enter.
 
-    Uses platform specific APIs (msvcrt on Windows, termios/tty on Unix),
-    imported conditionally at module level.
+    Uses platform specific APIs (msvcrt on Windows, termios/tty on Unix), imported
+    conditionally at module level.
     """
     if sys.platform == "win32":
         return msvcrt.getwch()
@@ -456,14 +504,17 @@ def _getch() -> str:
 
 
 def prompt_user() -> str:
+    # noinspection GrazieInspection
     """Prompt user for action on a block.
 
-    Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 's' (skip), or 'q' (quit)
+    Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 'f' (flag), 's' (skip),
+    or 'q' (quit)
     """
     prompt = (
         f"[{colorize('a', 'green')}]ccept / "
         f"accept [{colorize('A', 'green')}]ll / "
         f"[{colorize('e', 'cyan')}]xclude / "
+        f"[{colorize('f', 'magenta')}]lag / "
         f"[{colorize('s', 'yellow')}]kip / "
         f"[{colorize('q', 'red')}]uit? "
     )
@@ -477,7 +528,7 @@ def prompt_user() -> str:
             if ch == "A":
                 return "A"
             ch = ch.lower()
-            if ch in ("a", "e", "s", "q"):
+            if ch in ("a", "e", "f", "s", "q"):
                 return ch
         except (EOFError, KeyboardInterrupt):
             print()
@@ -496,8 +547,8 @@ def process_content(
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
-    Returns (changed, new_content).  When *_state* is a dict and the user
-    presses quit in interactive mode, ``_state["quit"]`` is set to ``True``.
+    Returns (changed, new_content).  When *_state* is a dict and the user presses quit
+    in interactive mode, ``_state["quit"]`` is set to ``True``.
     """
     lines = content.splitlines(keepends=True)
 
@@ -615,6 +666,24 @@ def process_content(
                     new_lines.append(f"{indent}# octowrap: off")
                     new_lines.extend(block["lines"])
                     new_lines.append(f"{indent}# octowrap: on")
+                elif action == "f":
+                    indent = block["indent"]
+                    initial = f"{indent}# FIXME: "
+                    subsequent = f"{indent}#  "
+                    flag_text = (
+                        "Manually fix the below comment"
+                        " (flagged using octowrap in interactive mode)."
+                    )
+                    wrapped = textwrap.fill(
+                        flag_text,
+                        width=max_line_length,
+                        initial_indent=initial,
+                        subsequent_indent=subsequent,
+                        break_on_hyphens=False,
+                        break_long_words=False,
+                    )
+                    new_lines.extend(wrapped.split("\n"))
+                    new_lines.extend(block["lines"])
                 elif action == "q":
                     user_quit = True
                     if _state is not None:
@@ -664,7 +733,7 @@ def process_file(
 
     Returns (changed, new_content).
     """
-    with open(filepath, newline="") as f:
+    with open(filepath, encoding="utf-8", newline="") as f:
         content = f.read()
 
     changed, new_content = process_content(
@@ -682,7 +751,7 @@ def process_file(
         original_mode = stat.S_IMODE(os.stat(filepath).st_mode)
         tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
         try:
-            with open(tmp_fd, "w", newline="") as f:
+            with open(tmp_fd, "w", encoding="utf-8", newline="") as f:
                 f.write(new_content)
             os.chmod(tmp_path, original_mode)
             os.replace(tmp_path, filepath)
@@ -745,6 +814,12 @@ def main():
         default=None,
         help="Path to pyproject.toml config file (default: auto-discover)",
     )
+    parser.add_argument(
+        "--stdin-filename",
+        type=Path,
+        default=None,
+        help="Filename for config discovery and diff display (only valid with '-')",
+    )
 
     color_group = parser.add_mutually_exclusive_group()
     color_group.add_argument(
@@ -773,7 +848,11 @@ def main():
     # Load config from pyproject.toml and merge with CLI args. Precedence: hardcoded
     # defaults < config file < CLI args.
     try:
-        config = load_config(args.config)
+        if args.stdin_filename is not None and args.config is None:
+            discovered = find_config_file(args.stdin_filename.parent)
+            config = load_config(discovered)
+        else:
+            config = load_config(args.config)
     except ConfigError as exc:
         print(f"octowrap: config error: {exc}", file=sys.stderr)
         raise SystemExit(1)
@@ -799,8 +878,8 @@ def main():
     if "todo-patterns" in config:
         todo_patterns = config["todo-patterns"]
         if not todo_patterns:
-            # Explicit empty list disables TODO detection entirely; ignore extend-todo-
-            # patterns.
+            # Explicit empty list disables TODO detection entirely; ignore
+            # extend-todo-patterns.
             pass
         elif "extend-todo-patterns" in config:
             todo_patterns = todo_patterns + config["extend-todo-patterns"]
@@ -814,6 +893,14 @@ def main():
 
     # Handle stdin mode when '-' is passed as a path
     stdin_mode = any(str(p) == "-" for p in args.paths)
+
+    if args.stdin_filename is not None and not stdin_mode:
+        print(
+            "octowrap: error: --stdin-filename requires '-' (stdin mode)",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     if stdin_mode:
         if len(args.paths) > 1:
             print(
@@ -838,11 +925,12 @@ def main():
         )
 
         if args.diff and changed:
+            diff_label = str(args.stdin_filename) if args.stdin_filename else "<stdin>"
             diff = difflib.unified_diff(
                 content.splitlines(keepends=True),
                 new_content.splitlines(keepends=True),
-                fromfile="<stdin>",
-                tofile="<stdin>",
+                fromfile=diff_label,
+                tofile=diff_label,
             )
             sys.stdout.write("".join(diff))
         elif not (args.diff or args.check):
@@ -875,7 +963,9 @@ def main():
     interactive_state: dict = {}
     for filepath in files_to_process:
         try:
-            original: str | None = filepath.read_text() if args.diff else None
+            original: str | None = (
+                filepath.read_text(encoding="utf-8") if args.diff else None
+            )
             changed, new_content = process_file(
                 filepath,
                 args.line_length,

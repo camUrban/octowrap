@@ -1,6 +1,9 @@
 import pytest
 
+# noinspection PyProtectedMember
 from octowrap.rewrap import (
+    _join_comment_lines,
+    _looks_like_prose,
     extract_todo_marker,
     is_divider,
     is_likely_code,
@@ -74,10 +77,110 @@ class TestIsLikelyCode:
             "Fix the bug in the parser.",
             "See also: the docs for more info.",
             "",
+            "if the server is down:",
+            "for example: this shows the pattern",
+            "return the result to the caller",
+            "with this approach:",
+            "raise the bar on quality",
+            "import this idea from the design",
+            "assert that the value is correct",
+            "except for the edge cases",
+            "return to the previous behavior",
+            "while the process is running:",
+            "yield the right results",
+            "def improve the code quality",
+        ],
+        ids=[
+            "plain_english",
+            "fix_bug",
+            "see_also",
+            "empty",
+            "if_the",
+            "for_example",
+            "return_the",
+            "with_this",
+            "raise_the",
+            "import_this",
+            "assert_that",
+            "except_for",
+            "return_to",
+            "while_the",
+            "yield_the",
+            "def_no_paren",
         ],
     )
     def test_rejects_prose(self, text):
         assert not is_likely_code(text)
+
+
+class TestLooksLikeProse:
+    """Tests for _looks_like_prose()."""
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "if the server is down:",
+            "while the process runs:",
+            "with this approach:",
+            "return the result",
+            "raise the bar",
+            "import this idea",
+            "assert that the data is valid",
+            "yield these values",
+            "return those items",
+            "if those conditions hold:",
+            "return to the caller",
+            "return to previous state",
+            "assert that it works",
+        ],
+        ids=[
+            "if_the",
+            "while_the",
+            "with_this",
+            "return_the",
+            "raise_the",
+            "import_this",
+            "assert_that",
+            "yield_these",
+            "return_those",
+            "if_those",
+            "return_to_the",
+            "return_to_previous",
+            "assert_that_it",
+        ],
+    )
+    def test_detects_prose(self, text):
+        assert _looks_like_prose(text)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "if x > 0:",
+            "while True:",
+            "with open('f') as fh:",
+            "return result",
+            "raise ValueError('bad')",
+            "import os",
+            "assert x == 5",
+            "yield value",
+            "return a",
+            "if a is None:",
+        ],
+        ids=[
+            "if_code",
+            "while_code",
+            "with_code",
+            "return_code",
+            "raise_code",
+            "import_code",
+            "assert_code",
+            "yield_code",
+            "return_single_var",
+            "if_single_var",
+        ],
+    )
+    def test_rejects_code(self, text):
+        assert not _looks_like_prose(text)
 
 
 class TestIsDivider:
@@ -241,8 +344,8 @@ class TestShouldPreserveLine:
         assert not should_preserve_line("This is a regular comment.")
 
     def test_list_item_not_preserved(self):
-        """should_preserve_line does NOT check is_list_item; that's handled
-        separately in rewrap_comment_block."""
+        """should_preserve_line does NOT check is_list_item; that's handled separately
+        in rewrap_comment_block."""
         assert not should_preserve_line("- item one")
 
     def test_tool_directive_not_preserved(self):
@@ -378,7 +481,8 @@ class TestExtractTodoMarker:
         assert content == "fix"
 
     def test_case_sensitive_no_match(self):
-        """Lowercase 'todo' should not match uppercase pattern in case-sensitive mode."""
+        """Lowercase 'todo' should not match uppercase pattern in case-sensitive
+        mode."""
         marker, content = extract_todo_marker(
             "todo: fix", patterns=["TODO"], case_sensitive=True
         )
@@ -409,3 +513,43 @@ class TestExtractTodoMarker:
         marker, content = extract_todo_marker("  TODO: fix")
         assert marker == "  TODO: "
         assert content == "fix"
+
+
+class TestJoinCommentLines:
+    """Tests for _join_comment_lines hyphen-aware joining."""
+
+    def test_empty_list(self):
+        assert _join_comment_lines([]) == ""
+
+    def test_single_line(self):
+        assert _join_comment_lines(["hello world"]) == "hello world"
+
+    def test_normal_join(self):
+        assert _join_comment_lines(["hello", "world"]) == "hello world"
+
+    def test_heals_broken_hyphenated_word(self):
+        assert _join_comment_lines(["re-", "validate"]) == "re-validate"
+
+    def test_heals_midsentence_hyphen_break(self):
+        result = _join_comment_lines(["some text re-", "validate the input"])
+        assert result == "some text re-validate the input"
+
+    def test_standalone_hyphen_not_healed(self):
+        """A line ending with ' -' (standalone hyphen) should not heal."""
+        assert _join_comment_lines(["use the -", "v flag"]) == "use the - v flag"
+
+    def test_double_hyphen_not_healed(self):
+        """A line ending with '--' should not heal (not letter-hyphen)."""
+        assert _join_comment_lines(["use --", "verbose"]) == "use -- verbose"
+
+    def test_hyphen_before_non_alpha(self):
+        """A line ending with letter-hyphen before a digit should not heal."""
+        assert _join_comment_lines(["phase-", "2 begins"]) == "phase- 2 begins"
+
+    def test_multiple_lines_mixed(self):
+        result = _join_comment_lines(["command-", "line-", "interface is great"])
+        assert result == "command-line-interface is great"
+
+    def test_no_heal_when_next_line_starts_with_space(self):
+        """Next line starting with space should not trigger healing."""
+        assert _join_comment_lines(["re-", " validate"]) == "re-  validate"

@@ -10,13 +10,16 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 ## Features
 
 - Rewraps comment blocks to a configurable line length (default 88)
-- Preserves commented-out Python code (detected via 21 heuristic patterns)
+- Keeps hyphenated words intact (never breaks `command-line-interface` at hyphens)
+- Keeps long words and URLs intact (they overflow the line length rather than being broken mid-word)
+- Heals previously broken hyphenated words on rewrap (e.g. `re-` / `validate` -> `re-validate`)
+- Preserves commented-out Python code (detected via 21 heuristic patterns with a prose disqualifier to avoid false positives on natural English)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
 - Preserves list items (bullets, numbered items)
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
-- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs (`a` accept, `A` accept all, `e` exclude, `s` skip, `q` quit). Quitting stops all processing, including remaining files.
+- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs (`a` accept, `A` accept all, `e` exclude, `f` flag, `s` skip, `q` quit). Flagging inserts a FIXME marker above the block for later human attention. Quitting stops all processing, including remaining files.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss
@@ -27,13 +30,16 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 ```bash
 git clone https://github.com/camUrban/octowrap.git
 cd octowrap
+uv venv            # uses .python-version (3.13)
 uv pip install -e ".[dev]"
 ```
+
+> **Note:** The dev environment is pinned to Python 3.13 via `.python-version` because docformatter's `untokenize` dependency doesn't build on 3.14. The runtime itself supports 3.11+.
 
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
+octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
 ```
 
 ### Stdin/stdout
@@ -47,7 +53,13 @@ cat file.py | octowrap - --check         # exit 1 if changes needed
 cat file.py | octowrap - -l 79           # custom line length
 ```
 
-Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode).
+Use `--stdin-filename` to provide the original file path for config discovery and diff labels (useful for editor integrations like VS Code and Vim that pipe buffers via stdin):
+
+```bash
+cat file.py | octowrap - --stdin-filename src/app.py --diff
+```
+
+Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode). `--stdin-filename` requires `-`.
 
 ### Example
 
@@ -120,13 +132,25 @@ Use pragma comments to protect regions of a file from rewrapping, similar to `# 
 - `# octowrap: off` without a matching `on` disables rewrapping through end of file
 - Pragma lines themselves are always preserved as-is
 
+## Editor Integration
+
+### PyCharm
+
+Settings -> Tools -> File Watchers -> Add:
+
+- **File type:** Python
+- **Program:** `$ProjectFileDir$/.venv/Scripts/octowrap.exe` (or `.venv/bin/octowrap` on Unix)
+- **Arguments:** `$FilePath$`
+- **Output paths to refresh:** `$FilePath$`
+- **Working directory:** `$ProjectFileDir$`
+
 ## Pre-commit Hook
 
 Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.2.0
+  rev: v0.3.0
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
