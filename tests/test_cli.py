@@ -785,6 +785,145 @@ class TestStdinFilename:
         assert "x = 1" in out
 
 
+class TestInteractiveProgress:
+    """Tests for the interactive mode [X/Y] progress indicator."""
+
+    def test_progress_shown_in_interactive_mode(self, tmp_path, monkeypatch, capsys):
+        """Progress counter [1/N] appears in interactive diff output."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        assert "[1/1]" in out
+
+    def test_multi_file_progress(self, tmp_path, monkeypatch, capsys):
+        """Progress increments across files."""
+        a = tmp_path / "a.py"
+        a.write_bytes(WRAPPABLE_CONTENT)
+        b = tmp_path / "b.py"
+        b.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(a), str(b)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        assert "[1/2]" in out
+        assert "[2/2]" in out
+
+    def test_no_progress_in_non_interactive_mode(self, tmp_path, monkeypatch, capsys):
+        """No [X/Y] progress indicator appears outside interactive mode."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "[1/" not in out
+
+    def test_progress_with_multiple_blocks(self, tmp_path, monkeypatch, capsys):
+        """Progress counts changed blocks, not files."""
+        content = (
+            b"# This is a comment that was wrapped\n"
+            b"# at a short width previously.\n"
+            b"x = 1\n"
+            b"# Another comment that was wrapped\n"
+            b"# at a short width previously.\n"
+            b"y = 2\n"
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(content)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        assert "[1/2]" in out
+        assert "[2/2]" in out
+
+    def test_progress_skips_unchanged_blocks(self, tmp_path, monkeypatch, capsys):
+        """Blocks that don't change are not counted in the progress total."""
+        content = (
+            b"# Short.\n"
+            b"x = 1\n"
+            b"# This is a comment that was wrapped\n"
+            b"# at a short width previously.\n"
+            b"y = 2\n"
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(content)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        # Only one block changes, so total should be 1
+        assert "[1/1]" in out
+
+    def test_progress_pragma_disables_counting(self, tmp_path, monkeypatch, capsys):
+        """Blocks after octowrap: off (without matching on) are not counted."""
+        content = (
+            b"# octowrap: off\n"
+            b"x = 1\n"
+            b"# This is a comment that was wrapped\n"
+            b"# at a short width previously.\n"
+            b"y = 2\n"
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(content)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        # The block is disabled so nothing should be prompted
+        assert "[1/" not in out
+        assert "0 file(s) reformatted." in out
+
+    def test_progress_pragma_on_re_enables_counting(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Blocks after octowrap: on are counted again."""
+        content = (
+            b"# octowrap: off\n"
+            b"x = 1\n"
+            b"# octowrap: on\n"
+            b"y = 2\n"
+            b"# This is a comment that was wrapped\n"
+            b"# at a short width previously.\n"
+            b"z = 3\n"
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(content)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        assert "[1/1]" in out
+
+    def test_progress_prescan_error_skipped(self, tmp_path, monkeypatch, capsys):
+        """Files that error during pre-scan are silently skipped."""
+        good = tmp_path / "good.py"
+        good.write_bytes(WRAPPABLE_CONTENT)
+        bad = tmp_path / "bad.py"
+        bad.write_bytes(WRAPPABLE_CONTENT)
+
+        real_count = mod.count_changed_blocks
+        calls = [0]
+
+        def failing_count(content, *a, **kw):
+            # Simulate an error only when we detect it's the bad file's content. Both
+            # files have the same content, so use a counter.
+            calls[0] += 1
+            if calls[0] == 1:
+                raise RuntimeError("fake pre-scan error")
+            return real_count(content, *a, **kw)
+
+        monkeypatch.setattr(mod, "count_changed_blocks", failing_count)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(bad), str(good)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        # Only good.py was counted in pre-scan, so total is 1
+        assert "[1/1]" in out
+
+
 class TestDiffUtf8:
     """Tests for UTF-8 handling in diff mode."""
 

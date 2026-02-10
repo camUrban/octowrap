@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Interactive mode (`-i`) now shows a `[X/Y]` progress indicator in the diff header, where X is the current changed block and Y is the total across all files. A pre-scan counts changed blocks upfront so the total is known before prompting begins.
+
 ### Changed
 - File processing errors now print to stderr (instead of stdout) and cause exit code 2, matching ruff's behavior
 - Malformed `pyproject.toml` files now raise an error instead of being silently skipped during config discovery

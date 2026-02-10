@@ -49,12 +49,13 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
    - `is_todo_marker()`: detects TODO/FIXME-style markers (configurable patterns, case-insensitive by default, no colon required)
    - `is_todo_continuation()`: detects one-space-indented continuation lines for multi-line TODOs
 8. **Rewrapping** (`rewrap_comment_block()`): uses `textwrap.fill()` with `break_on_hyphens=False` and `break_long_words=False`, respecting indent and max line length (min text width: 20 chars). Hyphenated words and URLs are kept intact (long words overflow rather than break). `_join_comment_lines()` heals previously broken hyphenated words and erroneous spaces at bracket boundaries (`(`, `)`, `[`, `]`) when re-joining lines. TODO markers are rewrapped with their marker prefix on the first line and one-space continuation indent on subsequent lines.
-9. **Output**: interactive per block approval (`a` accept, `A` accept all remaining blocks in the current file, `e` exclude, `f` flag, `s` skip, `q` quit) with colorized diffs showing the relative filepath, or batch mode. The `e` action wraps the original block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it. The `f` action inserts a `# FIXME: Manually fix the below comment` marker above the original block for later human attention. Quitting stops all processing, including remaining files in a multi file run.
+9. **Output**: interactive per block approval (`a` accept, `A` accept all remaining blocks in the current file, `e` exclude, `f` flag, `s` skip, `q` quit) with colorized diffs showing the relative filepath and a `[X/Y]` progress indicator, or batch mode. The progress indicator is powered by an upfront pre-scan (`count_changed_blocks()`) that counts how many blocks will change across all files. The `e` action wraps the original block with `# octowrap: off` / `# octowrap: on` pragmas so future runs skip it. The `f` action inserts a `# FIXME: Manually fix the below comment` marker above the original block for later human attention. Quitting stops all processing, including remaining files in a multi file run.
 
 ### Key functions
 
 - `process_content(content, max_line_length, interactive)`: pure string-in/string-out transformation; core rewrap logic shared by both file and stdin paths
 - `process_file(filepath, max_line_length, dry_run, interactive)`: reads file, calls `process_content()`, conditionally writes back. Uses atomic writes (temp file + `os.replace()`) to protect original files against interruptions.
+- `count_changed_blocks(content, max_line_length)`: counts comment blocks whose rewrapped output differs from the original, respecting pragmas. Used by `main()` to pre-scan files for the interactive progress indicator. Only counts non-pragma blocks (pragma blocks are auto-applied, not prompted).
 
 ## Tooling
 

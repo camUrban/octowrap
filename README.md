@@ -20,7 +20,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
-- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs (`a` accept, `A` accept all remaining blocks in the current file, `e` exclude, `f` flag, `s` skip, `q` quit). Flagging inserts a FIXME marker above the block for later human attention. Quitting stops all processing, including remaining files.
+- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining blocks in the current file, `e` exclude, `f` flag, `s` skip, `q` quit). Flagging inserts a FIXME marker above the block for later human attention. Quitting stops all processing, including remaining files.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss

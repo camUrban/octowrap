@@ -446,6 +446,55 @@ def rewrap_comment_block(
     return result
 
 
+def count_changed_blocks(
+    content: str,
+    max_line_length: int = 88,
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
+) -> int:
+    """Count comment blocks that will be interactively prompted.
+
+    Only counts non-pragma blocks whose rewrapped output differs from the original.
+    Pragma blocks are auto-applied in ``process_content()`` (never prompted), so they
+    are traversed here solely to track the ``disabled`` state.
+    """
+    lines_stripped = [line.rstrip("\n\r") for line in content.splitlines(keepends=True)]
+    blocks = parse_comment_blocks(lines_stripped)
+    count = 0
+    disabled = False
+
+    for block in blocks:
+        if block["type"] == "code":
+            continue
+
+        has_pragma = any(parse_pragma(bline) is not None for bline in block["lines"])
+
+        if has_pragma:
+            # Pragma blocks are auto-applied, not interactively prompted.  Walk the
+            # lines only to update the disabled state.
+            for bline in block["lines"]:
+                p = parse_pragma(bline)
+                if p is not None:
+                    disabled = p == "off"
+            continue
+
+        if disabled:
+            continue
+
+        rewrapped = rewrap_comment_block(
+            block,
+            max_line_length,
+            todo_patterns=todo_patterns,
+            todo_case_sensitive=todo_case_sensitive,
+            todo_multiline=todo_multiline,
+        )
+        if rewrapped != block["lines"]:
+            count += 1
+
+    return count
+
+
 _USE_COLOR: bool = True
 
 
@@ -470,6 +519,7 @@ def show_block_diff(
     new_lines: list[str],
     start_line: int,
     filepath: str = "",
+    progress: str = "",
 ) -> bool:
     """Display a diff for a single comment block.
 
@@ -483,6 +533,8 @@ def show_block_diff(
         header = colorize(f"{filepath} Lines {start_line + 1}-{end}:", "bold")
     else:
         header = colorize(f"Lines {start_line + 1}-{end}:", "bold")
+    if progress:
+        header += " " + colorize(progress, "cyan")
     print(f"\n{header}")
     print(colorize("─" * 60, "cyan"))
 
@@ -659,9 +711,27 @@ def process_content(
         elif accept_all:
             new_lines.extend(rewrapped)
         else:
+            # Build progress string if pre-scan totals are available.
+            progress = ""
+            if (
+                _state is not None
+                and "block_total" in _state
+                and _state["block_total"] > 0
+            ):
+                _state["block_current"] = _state.get("block_current", 0) + 1
+                progress = f"[{_state['block_current']}/{_state['block_total']}]"
+
             has_changes = not user_quit and show_block_diff(
-                block["lines"], rewrapped, block["start_idx"], filepath=filepath
+                block["lines"],
+                rewrapped,
+                block["start_idx"],
+                filepath=filepath,
+                progress=progress,
             )
+
+            if not has_changes and progress:
+                # Block had no actual diff; undo the counter increment.
+                _state["block_current"] -= 1
 
             if has_changes:
                 action = prompt_user()
@@ -972,6 +1042,25 @@ def main():
     changed_count = 0
     error_count = 0
     interactive_state: dict = {}
+
+    # Pre-scan to count total changed blocks for interactive progress indicator.
+    if args.interactive and not args.dry_run:
+        total_blocks = 0
+        for fp in files_to_process:
+            try:
+                file_content = fp.read_text(encoding="utf-8")
+                total_blocks += count_changed_blocks(
+                    file_content,
+                    args.line_length,
+                    todo_patterns=todo_patterns,
+                    todo_case_sensitive=todo_case_sensitive,
+                    todo_multiline=todo_multiline,
+                )
+            except Exception:
+                pass  # Errors will be reported during the actual processing pass.
+        interactive_state["block_total"] = total_blocks
+        interactive_state["block_current"] = 0
+
     for filepath in files_to_process:
         try:
             original: str | None = (
