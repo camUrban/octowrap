@@ -820,6 +820,9 @@ def process_content(
                         continue
 
                     code_part, comment_text = extracted
+                    if is_tool_directive(comment_text):
+                        new_lines.append(line)
+                        continue
                     indent = " " * (len(line) - len(line.lstrip()))
                     synthetic = {
                         "type": "comment_block",
