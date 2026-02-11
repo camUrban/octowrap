@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 - 2026-02-10
+
+### Added
+- List item wrapping: long list items (bullets, numbered, lettered) are now rewrapped with hanging indent aligned to the text after the marker. Continuation lines indented to the marker's text column are collected before wrapping. Nesting is handled naturally — each item wraps independently at its own indent level. Disable with `list-wrap = false` in config.
+- `list-wrap` config key (bool, default `true`) in `[tool.octowrap]`
+- Inline comment extraction: when a code line with an inline comment (`code  # comment`) exceeds the line length, the comment is extracted into a standalone block comment above the code line and wrapped normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline` or `inline = false` in config.
+- `--no-inline` CLI flag to disable inline comment extraction
+- `inline` config key (bool, default `true`) in `[tool.octowrap]`
+- Interactive mode (`-i`) now shows a `[X/Y]` progress indicator in the diff header, where X is the current changed block and Y is the total across all files. A pre-scan counts changed blocks upfront so the total is known before prompting begins.
+
+### Changed
+- File processing errors now print to stderr (instead of stdout) and cause exit code 2, matching ruff's behavior
+- Malformed `pyproject.toml` files now raise an error instead of being silently skipped during config discovery
+
+### Fixed
+- `[f]lag` action in interactive mode prompt was rendered without color because `magenta` was missing from the ANSI color dictionary; added it so the flag option is now correctly colorized
+- `todo-patterns` containing trailing punctuation (e.g. `"TEST:"`) failed to match due to a `\b` word boundary being appended after non-word characters; the boundary is now only added when the pattern ends with a word character
+- Rewrapping no longer introduces erroneous spaces after opening brackets (`(`, `[`) or before closing brackets (`)`, `]`) when a line break falls at a bracket boundary
+
 ## 0.3.1 - 2026-02-09
 
 ### Added

@@ -4,6 +4,7 @@ import pytest
 from octowrap.rewrap import (
     _join_comment_lines,
     _looks_like_prose,
+    extract_list_marker,
     extract_todo_marker,
     is_divider,
     is_likely_code,
@@ -423,6 +424,18 @@ class TestIsTodoMarker:
         """Leading whitespace on the content is okay for markers."""
         assert is_todo_marker("  TODO fix", patterns=["todo"])
 
+    def test_pattern_with_trailing_colon(self):
+        """Patterns that include a colon (e.g. 'TEST:') should match."""
+        assert is_todo_marker("TEST: Add tests", patterns=["TEST:"])
+        assert is_todo_marker("REFACTOR: clean up", patterns=["REFACTOR:"])
+
+    def test_pattern_with_trailing_colon_case_insensitive(self):
+        assert is_todo_marker("test: Add tests", patterns=["TEST:"])
+
+    def test_pattern_with_trailing_colon_no_false_prefix(self):
+        """'TEST:' pattern should not match 'TESTING:' — the colon anchors it."""
+        assert not is_todo_marker("TESTING: something", patterns=["TEST:"])
+
 
 class TestIsTodoContinuation:
     """Tests for is_todo_continuation()."""
@@ -514,6 +527,17 @@ class TestExtractTodoMarker:
         assert marker == "  TODO: "
         assert content == "fix"
 
+    def test_pattern_with_trailing_colon(self):
+        """Pattern 'TEST:' should match 'TEST: Add tests'."""
+        marker, content = extract_todo_marker("TEST: Add tests", patterns=["TEST:"])
+        assert marker == "TEST: "
+        assert content == "Add tests"
+
+    def test_pattern_with_trailing_colon_no_double_colon(self):
+        """Pattern 'TEST:' should not produce a double colon in the marker."""
+        marker, content = extract_todo_marker("TEST: stuff", patterns=["TEST:"])
+        assert "::" not in marker
+
 
 class TestJoinCommentLines:
     """Tests for _join_comment_lines hyphen-aware joining."""
@@ -553,3 +577,94 @@ class TestJoinCommentLines:
     def test_no_heal_when_next_line_starts_with_space(self):
         """Next line starting with space should not trigger healing."""
         assert _join_comment_lines(["re-", " validate"]) == "re-  validate"
+
+    def test_opening_paren_no_space(self):
+        """A line ending with '(' should join without a space."""
+        assert (
+            _join_comment_lines(["moments (", "in the first"])
+            == "moments (in the first"
+        )
+
+    def test_opening_bracket_no_space(self):
+        """A line ending with '[' should join without a space."""
+        assert _join_comment_lines(["see [", "section 1]"]) == "see [section 1]"
+
+    def test_closing_paren_no_space(self):
+        """A line starting with ')' should join without a space."""
+        assert _join_comment_lines(["the first Airplane's CG", ") on each"]) == (
+            "the first Airplane's CG) on each"
+        )
+
+    def test_closing_bracket_no_space(self):
+        """A line starting with ']' should join without a space."""
+        assert _join_comment_lines(["see section 1", "] for details"]) == (
+            "see section 1] for details"
+        )
+
+    def test_paren_full_example(self):
+        """End-to-end test matching the reported bug scenario."""
+        lines = [
+            "Solve for the forces (in the first Airplane's geometry axes) and moments (",
+            "in the first Airplane's geometry axes, relative to the first Airplane's CG)",
+            "on each Panel.",
+        ]
+        expected = (
+            "Solve for the forces (in the first Airplane's geometry axes) and moments "
+            "(in the first Airplane's geometry axes, relative to the first Airplane's "
+            "CG) on each Panel."
+        )
+        assert _join_comment_lines(lines) == expected
+
+
+class TestExtractListMarker:
+    """Tests for extract_list_marker()."""
+
+    def test_bullet_dash(self):
+        marker, content = extract_list_marker("- item")
+        assert marker == "- "
+        assert content == "item"
+
+    def test_bullet_star(self):
+        marker, content = extract_list_marker("* item")
+        assert marker == "* "
+        assert content == "item"
+
+    def test_numbered_dot(self):
+        marker, content = extract_list_marker("1. item")
+        assert marker == "1. "
+        assert content == "item"
+
+    def test_numbered_paren(self):
+        marker, content = extract_list_marker("1) item")
+        assert marker == "1) "
+        assert content == "item"
+
+    def test_lettered_dot(self):
+        marker, content = extract_list_marker("a. item")
+        assert marker == "a. "
+        assert content == "item"
+
+    def test_lettered_paren(self):
+        marker, content = extract_list_marker("a) item")
+        assert marker == "a) "
+        assert content == "item"
+
+    def test_nested_bullet(self):
+        marker, content = extract_list_marker("  - nested")
+        assert marker == "  - "
+        assert content == "nested"
+
+    def test_no_match(self):
+        marker, content = extract_list_marker("just prose")
+        assert marker == ""
+        assert content == "just prose"
+
+    def test_multi_digit_number(self):
+        marker, content = extract_list_marker("12. twelfth item")
+        assert marker == "12. "
+        assert content == "twelfth item"
+
+    def test_empty_content(self):
+        marker, content = extract_list_marker("- ")
+        assert marker == "- "
+        assert content == ""

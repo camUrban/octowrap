@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "octowrap"
-version = "0.3.1"
+version = "0.4.0"
 description = "Rewrap Python # comments to a specified line length"
 requires-python = ">=3.11"
 dependencies = []

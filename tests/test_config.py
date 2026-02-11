@@ -29,9 +29,10 @@ class TestFindConfigFile:
         _write_pyproject(tmp_path, b"[tool.other]\nfoo = 1\n")
         assert find_config_file(tmp_path) is None
 
-    def test_skips_malformed_toml(self, tmp_path):
+    def test_raises_on_malformed_toml(self, tmp_path):
         _write_pyproject(tmp_path, b"[tool.octowrap\nbroken")
-        assert find_config_file(tmp_path) is None
+        with pytest.raises(ConfigError, match="Failed to parse"):
+            find_config_file(tmp_path)
 
     def test_uses_cwd_when_no_start_dir(self, tmp_path, monkeypatch):
         _write_pyproject(tmp_path, MINIMAL_PYPROJECT)
@@ -164,5 +165,17 @@ class TestLoadConfig:
 
     def test_todo_multiline_wrong_type_raises(self, tmp_path):
         _write_pyproject(tmp_path, b'[tool.octowrap]\ntodo-multiline = "yes"\n')
+        with pytest.raises(ConfigError, match="expects bool"):
+            load_config(tmp_path / "pyproject.toml")
+
+    # --- inline config key ---
+
+    def test_loads_inline(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\ninline = false\n")
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"inline": False}
+
+    def test_inline_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\ninline = "yes"\n')
         with pytest.raises(ConfigError, match="expects bool"):
             load_config(tmp_path / "pyproject.toml")

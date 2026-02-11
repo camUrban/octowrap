@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
 [![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
 
-A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, list items, and tool directives. TODO/FIXME markers are intelligently rewrapped with continuation indentation.
+A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, and tool directives. List items are rewrapped with hanging indent. TODO/FIXME markers are intelligently rewrapped with continuation indentation. Overflowing inline comments are extracted into standalone block comments and wrapped normally.
 
 ## Features
 
@@ -13,13 +13,15 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Keeps hyphenated words intact (never breaks `command-line-interface` at hyphens)
 - Keeps long words and URLs intact (they overflow the line length rather than being broken mid-word)
 - Heals previously broken hyphenated words on rewrap (e.g. `re-` / `validate` -> `re-validate`)
+- Heals erroneous spaces at bracket boundaries on rewrap (e.g. `( text)` -> `(text)`, `text )` -> `text)`)
 - Preserves commented-out Python code (detected via 21 heuristic patterns with a prose disqualifier to avoid false positives on natural English)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
-- Preserves list items (bullets, numbered items)
+- Rewraps list items (bullets, numbered, lettered) with hanging indent aligned to the text after the marker; collects continuation lines and handles nesting naturally. Disable with `list-wrap = false`.
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
+- Extracts overflowing inline comments (`code  # comment`) into standalone block comments above the code line when the line exceeds the line length, then wraps them normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline`.
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
-- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs (`a` accept, `A` accept all, `e` exclude, `f` flag, `s` skip, `q` quit). Flagging inserts a FIXME marker above the block for later human attention. Quitting stops all processing, including remaining files.
+- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining blocks in the current file, `e` exclude, `f` flag, `s` skip, `q` quit). Flagging inserts a FIXME marker above the block for later human attention. Quitting stops all processing, including remaining files.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss
@@ -39,7 +41,7 @@ uv pip install -e ".[dev]"
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [-i] [--color | --no-color]
+octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [--no-inline] [-i] [--color | --no-color]
 ```
 
 ### Stdin/stdout
@@ -77,6 +79,25 @@ After (`--line-length 88`):
 # columns.
 ```
 
+## Inline Comment Extraction
+
+When a code line with an inline comment exceeds the line length, octowrap extracts the comment into a standalone block comment above the code:
+
+Before:
+
+```python
+x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit
+```
+
+After (`--line-length 88`):
+
+```python
+# This comment pushes the line way past the limit
+x = some_really_long_function_call(arg1, arg2)
+```
+
+Tool directives (`# type: ignore`, `# noqa`, `# fmt: off`, etc.) are never extracted, even when the line overflows. Disable this behavior entirely with `--no-inline` or `inline = false` in config.
+
 ## TODO/FIXME Rewrapping
 
 By default, `TODO` and `FIXME` markers are detected (case-insensitive, no colon required) and rewrapped with the marker on the first line and a one-space continuation indent on subsequent lines:
@@ -112,6 +133,36 @@ todo-multiline = false                       # don't collect continuations
 ```
 
 Setting `todo-patterns = []` disables TODO detection entirely, causing former TODO lines to be rewrapped as regular prose.
+
+## List Item Wrapping
+
+Long list items are rewrapped with hanging indent aligned to the text after the marker:
+
+Before:
+
+```python
+# - This is a very long bullet point that exceeds the line length and should be wrapped to fit within the configured width.
+# 1. This is a very long numbered item that also exceeds the line length and needs to be wrapped properly.
+```
+
+After (`--line-length 72`):
+
+```python
+# - This is a very long bullet point that exceeds the line length and
+#   should be wrapped to fit within the configured width.
+# 1. This is a very long numbered item that also exceeds the line length
+#    and needs to be wrapped properly.
+```
+
+Nesting is handled naturally — each item wraps independently at its own indent level:
+
+```python
+# - Top-level item
+#   - Nested item that is quite long and will be wrapped with its own
+#     hanging indent aligned to the nested marker
+```
+
+Continuation lines indented to at least the marker's text column are collected and rewrapped together. Disable with `list-wrap = false` in `pyproject.toml`.
 
 ## Disabling Rewrapping
 
@@ -150,12 +201,22 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.3.1
+  rev: v0.4.0
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
       # args: [--check]        # fail without modifying (useful for CI)
 ```
+
+## Exit Codes
+
+| Code | Meaning                                                                      |
+|------|------------------------------------------------------------------------------|
+| 0    | Success (no changes needed, or changes applied)                              |
+| 1    | `--check` mode: files would be reformatted                                   |
+| 2    | Error processing one or more files (e.g., encoding error, permission denied) |
+
+Errors are printed to stderr. This behavior matches ruff.
 
 ## GitHub Actions
 
@@ -177,6 +238,7 @@ Add a `[tool.octowrap]` section to your `pyproject.toml` to set project-level de
 [tool.octowrap]
 line-length = 120
 recursive = false
+inline = true
 exclude = ["migrations", "generated"]
 extend-exclude = ["vendor"]
 ```
@@ -185,6 +247,8 @@ extend-exclude = ["vendor"]
 |------------------------|-----------|---------------------|------------------|
 | `line-length`          | int       | 88                  | `--line-length`  |
 | `recursive`            | bool      | true                | `--no-recursive` |
+| `inline`               | bool      | true                | `--no-inline`    |
+| `list-wrap`            | bool      | true                | —                |
 | `exclude`              | list[str] | —                   | —                |
 | `extend-exclude`       | list[str] | —                   | —                |
 | `todo-patterns`        | list[str] | `["todo", "fixme"]` | —                |
@@ -194,7 +258,7 @@ extend-exclude = ["vendor"]
 
 CLI flags always take precedence over config values. Use `--config PATH` to point to a specific `pyproject.toml` instead of relying on auto-discovery.
 
-`exclude` replaces the built-in default exclude list entirely. `extend-exclude` adds patterns to the defaults (or to `exclude` if set). Default excludes: `.git`, `.hg`, `.svn`, `.bzr`, `.venv`, `venv`, `.tox`, `.nox`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `__pycache__`, `__pypackages__`, `_build`, `build`, `dist`, `node_modules`, `.eggs`. Patterns are matched against individual path components using `fnmatch`.
+`exclude` replaces the built-in default exclude list entirely. `extend-exclude` adds patterns to the defaults (or to `exclude` if set). Default excludes: `.git`, `.hg`, `.svn`, `.bzr`, `.venv`, `venv`, `.tox`, `.nox`, `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `__pycache__`, `__pypackages__`, `_build`, `build`, `dist`, `node_modules`, `.eggs`. Patterns are matched against individual folder or file names using `fnmatch`, not full paths. For example, `"vendor"` excludes any folder named `vendor` anywhere in the tree, while `"docs/vendor"` would never match (use `"vendor"` instead). Glob wildcards work: `"test_*"` excludes any folder starting with `test_`.
 
 `todo-patterns` replaces the default TODO marker patterns (`["todo", "fixme"]`). `extend-todo-patterns` adds to the effective list. Both can be combined. Setting `todo-patterns = []` disables TODO detection entirely.
 
