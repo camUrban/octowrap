@@ -14,6 +14,7 @@ import difflib
 import fnmatch
 import os
 import re
+import shutil
 import stat
 import sys
 import tempfile
@@ -21,6 +22,7 @@ import textwrap
 from pathlib import Path
 
 from octowrap.config import ConfigError, find_config_file, load_config
+from octowrap.diff import NotAGitRepoError, get_changed_lines, get_repo_root
 
 DEFAULT_EXCLUDES: list[str] = [
     ".git",
@@ -615,6 +617,7 @@ def count_changed_blocks(
     todo_multiline: bool = True,
     inline: bool = True,
     list_wrap: bool = True,
+    changed_lines: set[int] | None = None,
 ) -> int:
     """Count comment blocks that will be interactively prompted.
 
@@ -622,6 +625,9 @@ def count_changed_blocks(
     Pragma blocks are auto-applied in ``process_content()`` (never prompted), so they
     are traversed here solely to track the ``disabled`` state.  When *inline* is
     ``True``, overflowing inline comments also contribute to the count.
+
+    When *changed_lines* is not ``None``, only blocks overlapping the given set of
+    0-based line indices are considered.
     """
     lines_stripped = [line.rstrip("\n\r") for line in content.splitlines(keepends=True)]
     blocks = parse_comment_blocks(lines_stripped)
@@ -631,7 +637,10 @@ def count_changed_blocks(
     for block in blocks:
         if block["type"] == "code":
             if not disabled and inline:
-                for line in block["lines"]:
+                for line_idx, line in enumerate(block["lines"]):
+                    if changed_lines is not None:
+                        if (block["start_idx"] + line_idx) not in changed_lines:
+                            continue
                     if _should_extract_inline(line, max_line_length):
                         count += 1
             continue
@@ -649,6 +658,14 @@ def count_changed_blocks(
 
         if disabled:
             continue
+
+        # Skip blocks that don't overlap with changed lines.
+        if changed_lines is not None:
+            block_range = range(
+                block["start_idx"], block["start_idx"] + len(block["lines"])
+            )
+            if not any(i in changed_lines for i in block_range):
+                continue
 
         rewrapped = rewrap_comment_block(
             block,
@@ -782,11 +799,16 @@ def process_content(
     todo_multiline: bool = True,
     inline: bool = True,
     list_wrap: bool = True,
+    changed_lines: set[int] | None = None,
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
     Returns (changed, new_content).  When *_state* is a dict and the user presses quit
     in interactive mode, ``_state["quit"]`` is set to ``True``.
+
+    When *changed_lines* is not ``None``, only comment blocks whose line range overlaps
+    the given set of 0-based line indices are processed.  Blocks with no overlap are
+    preserved verbatim.
     """
     lines = content.splitlines(keepends=True)
 
@@ -812,6 +834,12 @@ def process_content(
                     if len(line.rstrip("\n")) <= max_line_length:
                         new_lines.append(line)
                         continue
+
+                    # Skip lines not in the changed set.
+                    if changed_lines is not None:
+                        if (block["start_idx"] + line_idx) not in changed_lines:
+                            new_lines.append(line)
+                            continue
 
                     # Extract the inline comment and build replacement lines.
                     extracted = extract_inline_comment(line)
@@ -979,6 +1007,15 @@ def process_content(
             new_lines.extend(block["lines"])
             continue
 
+        # When diff-only filtering is active, skip blocks that don't overlap.
+        if changed_lines is not None:
+            block_range = range(
+                block["start_idx"], block["start_idx"] + len(block["lines"])
+            )
+            if not any(i in changed_lines for i in block_range):
+                new_lines.extend(block["lines"])
+                continue
+
         # Use the normal rewrap logic.
         rewrapped = rewrap_comment_block(
             block,
@@ -1093,6 +1130,7 @@ def process_file(
     todo_multiline: bool = True,
     inline: bool = True,
     list_wrap: bool = True,
+    changed_lines: set[int] | None = None,
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
@@ -1112,6 +1150,7 @@ def process_file(
         todo_multiline=todo_multiline,
         inline=inline,
         list_wrap=list_wrap,
+        changed_lines=changed_lines,
     )
 
     if changed and not dry_run:
@@ -1179,6 +1218,18 @@ def main():
         action="store_true",
         default=None,
         help="Disable extraction of overflowing inline comments",
+    )
+    parser.add_argument(
+        "--diff-only",
+        action="store_true",
+        default=None,
+        help="Only process comment blocks overlapping lines changed in git",
+    )
+    parser.add_argument(
+        "--diff-base",
+        type=str,
+        default=None,
+        help="Git ref to diff against (default: HEAD, implies --diff-only)",
     )
 
     parser.add_argument(
@@ -1268,11 +1319,32 @@ def main():
     todo_multiline = config.get("todo-multiline", DEFAULT_TODO_MULTILINE)
     list_wrap = config.get("list-wrap", DEFAULT_LIST_WRAP)
 
+    # Diff-only: default False, config can override, --diff-only or --diff-base wins
+    diff_only = False
+    diff_base = "HEAD"
+    if args.diff_only is not None:
+        diff_only = True
+    elif args.diff_base is not None:
+        diff_only = True
+    elif config.get("diff-only", False):
+        diff_only = True
+    if args.diff_base is not None:
+        diff_base = args.diff_base
+    elif "diff-base" in config:
+        diff_base = config["diff-base"]
+
     if args.diff or args.check:
         args.dry_run = True
 
     # Handle stdin mode when '-' is passed as a path
     stdin_mode = any(str(p) == "-" for p in args.paths)
+
+    if diff_only and stdin_mode:
+        print(
+            "octowrap: error: --diff-only cannot be used with stdin",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
     if args.stdin_filename is not None and not stdin_mode:
         print(
@@ -1341,6 +1413,43 @@ def main():
         else:
             print(f"Warning: {path} not found, skipping")
 
+    # When diff-only is active, compute the set of changed lines per file once.
+    all_changed_lines: dict[str, set[int]] | None = None
+    repo_root: Path | None = None
+    if diff_only:
+        if shutil.which("git") is None:
+            print(
+                "octowrap: error: --diff-only requires git (not found on PATH)",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        repo_root = get_repo_root()
+        if repo_root is None:
+            print(
+                "octowrap: error: --diff-only must be run inside a git repository",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        try:
+            all_changed_lines = get_changed_lines(diff_base)
+        except NotAGitRepoError as exc:
+            print(
+                f"octowrap: error: --diff-only failed: {exc}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+    def _file_changed_lines(filepath: Path) -> set[int] | None:
+        """Look up the changed lines for *filepath*, or None if not filtering."""
+        if all_changed_lines is None:
+            return None
+        assert repo_root is not None
+        try:
+            rel_path = filepath.resolve().relative_to(repo_root).as_posix()
+        except ValueError:
+            rel_path = str(filepath)
+        return all_changed_lines.get(rel_path, set())
+
     changed_count = 0
     error_count = 0
     interactive_state: dict = {}
@@ -1359,6 +1468,7 @@ def main():
                     todo_multiline=todo_multiline,
                     inline=args.inline,
                     list_wrap=list_wrap,
+                    changed_lines=_file_changed_lines(fp),
                 )
             except OSError:
                 pass  # Errors will be reported during the actual processing pass.
@@ -1381,6 +1491,7 @@ def main():
                 todo_multiline=todo_multiline,
                 inline=args.inline,
                 list_wrap=list_wrap,
+                changed_lines=_file_changed_lines(filepath),
             )
 
             if changed:

@@ -15,6 +15,8 @@ _SCALAR_KEYS: dict[str, type] = {
     "todo-case-sensitive": bool,
     "todo-multiline": bool,
     "list-wrap": bool,
+    "diff-only": bool,
+    "diff-base": str,
 }
 
 _LIST_STR_KEYS: set[str] = {

@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 # noinspection PyProtectedMember
-from octowrap.rewrap import _relative_path, process_content, process_file
+from octowrap.rewrap import (
+    _relative_path,
+    count_changed_blocks,
+    process_content,
+    process_file,
+)
 
 
 def _raise_os_error(*_args, **_kwargs):
@@ -591,6 +596,158 @@ class TestPragma:
         changed, result = process_content(content, max_line_length=88, interactive=True)
         assert not changed
         assert not called
+
+
+class TestChangedLinesFiltering:
+    """Tests for the changed_lines parameter on process_content/process_file."""
+
+    # fmt: off
+    TWO_BLOCK_CONTENT = (
+        "# First block that was wrapped\n"   # line 0
+        "# at a short width.\n"              # line 1
+        "x = 1\n"                            # line 2
+        "# Second block that was wrapped\n"  # line 3
+        "# at a short width.\n"              # line 4
+    )
+    # fmt: on
+
+    def test_none_processes_all(self):
+        """changed_lines=None processes everything (default behavior)."""
+        content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines=None
+        )
+        assert changed
+        assert (
+            "# This is a comment that was wrapped at a short width previously."
+            in result
+        )
+
+    def test_overlapping_block_processed(self):
+        """A comment block at lines 0-1 is rewrapped when line 0 is changed."""
+        content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines={0}
+        )
+        assert changed
+        assert (
+            "# This is a comment that was wrapped at a short width previously."
+            in result
+        )
+
+    def test_non_overlapping_skipped(self):
+        """A comment block at lines 0-1 is skipped when only line 2 is changed."""
+        content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines={2}
+        )
+        assert not changed
+        assert result == content
+
+    def test_empty_set_skips_all(self):
+        """An empty changed_lines set skips all blocks."""
+        content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines=set()
+        )
+        assert not changed
+        assert result == content
+
+    def test_partial_overlap(self):
+        """A 3-line block is processed if only the middle line is in changed_lines."""
+        # fmt: off
+        content = (
+            "# This is a long comment that was wrapped at a very short width and\n"
+            "# needs to be rewrapped to the correct\n"
+            "# line length.\n"
+            "x = 1\n"
+        )
+        # fmt: on
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines={1}
+        )
+        assert changed
+
+    def test_selective_blocks(self):
+        """Two blocks: only the second overlaps changed_lines, only it is rewrapped."""
+        changed, result = process_content(
+            self.TWO_BLOCK_CONTENT, max_line_length=88, changed_lines={3}
+        )
+        assert changed
+        # First block unchanged
+        assert "# First block that was wrapped\n" in result
+        assert "# at a short width.\n" in result
+        # Second block rewrapped
+        assert "# Second block that was wrapped at a short width." in result
+
+    def test_inline_extraction_filtered(self):
+        """An overflowing inline on an unchanged line is not extracted."""
+        content = (
+            "x = 1\n"
+            "foo = bar()  # This inline comment is way too long and definitely"
+            " exceeds the eighty-eight character line length limit set\n"
+        )
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines={0}
+        )
+        assert not changed
+        assert result == content
+
+    def test_inline_extraction_on_changed_line(self):
+        """An overflowing inline on a changed line is extracted."""
+        content = (
+            "x = 1\n"
+            "foo = bar()  # This inline comment is way too long and definitely"
+            " exceeds the eighty-eight character line length limit set\n"
+        )
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines={1}
+        )
+        assert changed
+        assert "foo = bar()" in result
+
+    def test_pragma_state_tracked_regardless(self):
+        """Pragma off outside changed_lines still disables subsequent blocks."""
+        # fmt: off
+        content = (
+            "# octowrap: off\n"                                # line 0 (pragma)
+            "# This block is disabled.\n"                      # line 1
+            "x = 1\n"                                          # line 2
+            "# This block is also disabled because\n"          # line 3
+            "# no octowrap: on was ever issued.\n"             # line 4
+        )
+        # fmt: on
+        changed, result = process_content(
+            content, max_line_length=88, changed_lines={3, 4}
+        )
+        assert not changed
+        assert result == content
+
+    def test_process_file_passes_through(self, tmp_path):
+        """process_file forwards changed_lines to process_content."""
+        f = tmp_path / "t.py"
+        f.write_bytes(self.TWO_BLOCK_CONTENT.encode())
+        changed, content = process_file(f, max_line_length=88, changed_lines={3})
+        assert changed
+        # First block unchanged
+        assert "# First block that was wrapped\n" in content
+        # Second block rewrapped
+        assert "# Second block that was wrapped at a short width." in content
+
+    def test_count_changed_blocks_filtered(self):
+        """count_changed_blocks only counts blocks overlapping changed_lines."""
+        count = count_changed_blocks(
+            self.TWO_BLOCK_CONTENT, max_line_length=88, changed_lines={3}
+        )
+        # Only the second block overlaps; the first does not.
+        assert count == 1
+
+    def test_count_changed_blocks_none_counts_all(self):
+        """count_changed_blocks with changed_lines=None counts all changed blocks."""
+        count = count_changed_blocks(
+            self.TWO_BLOCK_CONTENT, max_line_length=88, changed_lines=None
+        )
+        assert count == 2
 
 
 class TestRelativePath:

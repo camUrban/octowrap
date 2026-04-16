@@ -25,6 +25,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss
+- Incremental adoption via `--diff-only`: only process comments on lines changed in git, so teams can adopt octowrap gradually without reformatting the entire codebase
 - Project-level configuration via `[tool.octowrap]` in `pyproject.toml`
 
 ## Development Setup
@@ -41,7 +42,7 @@ uv pip install -e ".[dev]"
 ## Usage
 
 ```bash
-octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [--no-inline] [-i] [--color | --no-color]
+octowrap <files_or_dirs> [--line-length 88] [--config PATH] [--stdin-filename PATH] [--dry-run] [--diff] [--check] [--no-recursive] [--no-inline] [--diff-only] [--diff-base REF] [-i] [--color | --no-color]
 ```
 
 ### Stdin/stdout
@@ -183,6 +184,57 @@ Use pragma comments to protect regions of a file from rewrapping, similar to `# 
 - `# octowrap: off` without a matching `on` disables rewrapping through end of file
 - Pragma lines themselves are always preserved as-is
 
+## Incremental Adoption
+
+Use `--diff-only` to only process comment blocks that overlap with lines changed in git. This lets teams adopt octowrap gradually without reformatting the entire codebase in one go:
+
+```bash
+# Only rewrap comments on lines you've changed vs HEAD
+octowrap --diff-only .
+
+# Only rewrap comments changed relative to main (useful in CI)
+octowrap --diff-only --diff-base main --check .
+
+# Preview what would change
+octowrap --diff-only --diff .
+```
+
+`--diff-base REF` specifies the git ref to diff against (default: `HEAD`). Passing `--diff-base` implies `--diff-only`.
+
+Comment blocks are processed at the block level: if any line in a comment block overlaps with a changed line, the entire block is rewrapped. This is safe because comment blocks are syntactically independent.
+
+### Pre-commit with `--diff-only`
+
+The most common use case is adding octowrap to pre-commit so it only enforces wrapping on comments you're already changing:
+
+```yaml
+- repo: https://github.com/camUrban/octowrap
+  rev: v0.5.0
+  hooks:
+    - id: octowrap
+      args: [--diff-only]
+```
+
+Or in check-only mode (fail without modifying):
+
+```yaml
+- repo: https://github.com/camUrban/octowrap
+  rev: v0.5.0
+  hooks:
+    - id: octowrap
+      args: [--diff-only, --check]
+```
+
+Both `diff-only` and `diff-base` can also be set in `pyproject.toml`:
+
+```toml
+[tool.octowrap]
+diff-only = true
+diff-base = "main"
+```
+
+Note: `--diff-only` requires a git repository and cannot be used with stdin mode (`-`).
+
 ## Editor Integration
 
 ### PyCharm
@@ -201,11 +253,12 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.4.0
+  rev: v0.5.0
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
       # args: [--check]        # fail without modifying (useful for CI)
+      # args: [--diff-only]    # only process comments on changed lines
 ```
 
 ## Exit Codes
@@ -230,6 +283,22 @@ Use `--check` in CI to fail if any comments would be rewrapped:
   run: octowrap --check .
 ```
 
+### Incremental CI check
+
+To only enforce wrapping on comments changed in the PR (for gradual adoption), use `--diff-only --diff-base origin/main`. A full git history is required so that `origin/main` is available for comparison:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+
+- name: Install octowrap
+  run: pip install octowrap
+
+- name: Check changed comments
+  run: octowrap --diff-only --diff-base origin/main --check .
+```
+
 ## Configuration
 
 Add a `[tool.octowrap]` section to your `pyproject.toml` to set project-level defaults:
@@ -249,6 +318,8 @@ extend-exclude = ["vendor"]
 | `recursive`            | bool      | true                | `--no-recursive` |
 | `inline`               | bool      | true                | `--no-inline`    |
 | `list-wrap`            | bool      | true                | —                |
+| `diff-only`            | bool      | false               | `--diff-only`    |
+| `diff-base`            | str       | `"HEAD"`            | `--diff-base`    |
 | `exclude`              | list[str] | —                   | —                |
 | `extend-exclude`       | list[str] | —                   | —                |
 | `todo-patterns`        | list[str] | `["todo", "fixme"]` | —                |

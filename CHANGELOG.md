@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 - 2026-04-16
+
+### Added
+- Incremental adoption via `--diff-only`: only process comment blocks overlapping lines changed in git, so teams can adopt octowrap gradually without reformatting the entire codebase
+- `--diff-base REF` flag to specify the git ref to diff against (default: `HEAD`); implies `--diff-only`
+- `diff-only` config key (bool, default `false`) in `[tool.octowrap]`
+- `diff-base` config key (str, default `"HEAD"`) in `[tool.octowrap]`
+- GitHub Actions example for incremental CI checks using `--diff-only --diff-base origin/main --check`
+
 ## 0.4.0 - 2026-02-10
 
 ### Added
