@@ -179,3 +179,25 @@ class TestLoadConfig:
         _write_pyproject(tmp_path, b'[tool.octowrap]\ninline = "yes"\n')
         with pytest.raises(ConfigError, match="expects bool"):
             load_config(tmp_path / "pyproject.toml")
+
+    # --- diff-only config keys ---
+
+    def test_loads_diff_only(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\ndiff-only = true\n")
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"diff-only": True}
+
+    def test_diff_only_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\ndiff-only = "yes"\n')
+        with pytest.raises(ConfigError, match="expects bool"):
+            load_config(tmp_path / "pyproject.toml")
+
+    def test_loads_diff_base(self, tmp_path):
+        _write_pyproject(tmp_path, b'[tool.octowrap]\ndiff-base = "main"\n')
+        result = load_config(tmp_path / "pyproject.toml")
+        assert result == {"diff-base": "main"}
+
+    def test_diff_base_wrong_type_raises(self, tmp_path):
+        _write_pyproject(tmp_path, b"[tool.octowrap]\ndiff-base = 42\n")
+        with pytest.raises(ConfigError, match="expects str"):
+            load_config(tmp_path / "pyproject.toml")
