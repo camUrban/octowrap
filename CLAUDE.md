@@ -32,12 +32,12 @@ pre-commit run --all-files
 
 ## Architecture
 
-Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.toml` config discovery and validation. `cli.py` imports and exposes `main` from `rewrap.py` to serve as the package entry point, and `__main__.py` enables `python -m octowrap`.
+Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.toml` config discovery and validation. `diff.py` provides git diff parsing and changed-line detection for `--diff-only` mode. `cli.py` imports and exposes `main` from `rewrap.py` to serve as the package entry point, and `__main__.py` enables `python -m octowrap`.
 
 ### rewrap.py pipeline
 
-1. **CLI parsing** (`main()`): accepts paths (or `-` for stdin), `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `--no-inline`, `-i` interactive, `--color`/`--no-color`, `--stdin-filename` (config discovery and diff labels in stdin mode). Recursive and inline are on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
-2. **Config loading**: `config.py` discovers `pyproject.toml` walking up from CWD (or uses `--config PATH`), reads `[tool.octowrap]`, validates keys/types. Raises `ConfigError` for malformed TOML or invalid settings (unknown keys, type mismatches). Supports `inline` (bool), `list-wrap` (bool, default true), `todo-patterns` (list, replaces defaults), `extend-todo-patterns` (list, adds to effective list), `todo-case-sensitive` (bool), `todo-multiline` (bool). Precedence: hardcoded defaults < config file < CLI args
+1. **CLI parsing** (`main()`): accepts paths (or `-` for stdin), `--line-length` (default 88), `--dry-run`, `--diff`, `--check`, `--no-recursive`, `--no-inline`, `-i` interactive, `--color`/`--no-color`, `--stdin-filename` (config discovery and diff labels in stdin mode), `--diff-only` (only process blocks overlapping lines changed in git), `--diff-base REF` (git ref to diff against, default HEAD, implies `--diff-only`). Recursive and inline are on by default. Color auto-detects TTY and respects the `NO_COLOR` env var.
+2. **Config loading**: `config.py` discovers `pyproject.toml` walking up from CWD (or uses `--config PATH`), reads `[tool.octowrap]`, validates keys/types. Raises `ConfigError` for malformed TOML or invalid settings (unknown keys, type mismatches). Supports `inline` (bool), `list-wrap` (bool, default true), `todo-patterns` (list, replaces defaults), `extend-todo-patterns` (list, adds to effective list), `todo-case-sensitive` (bool), `todo-multiline` (bool), `diff-only` (bool), `diff-base` (str). Precedence: hardcoded defaults < config file < CLI args
 3. **Stdin mode**: when `-` is passed as the sole path, reads from stdin, rewraps via `process_content()`, and writes to stdout. Supports `--diff`, `--check`, and `-l`. Cannot be mixed with other paths or `-i`.
 4. **File discovery**: walks directories for `*.py` files, filtering out excluded paths (`DEFAULT_EXCLUDES` + config `exclude`/`extend-exclude`)
 5. **Block parsing** (`parse_comment_blocks()`): groups consecutive same-indent comment lines into blocks, separating them from code
@@ -58,9 +58,11 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 
 ### Key functions
 
-- `process_content(content, max_line_length, interactive)`: pure string-in/string-out transformation; core rewrap logic shared by both file and stdin paths
-- `process_file(filepath, max_line_length, dry_run, interactive)`: reads file, calls `process_content()`, conditionally writes back. Uses atomic writes (temp file + `os.replace()`) to protect original files against interruptions.
-- `count_changed_blocks(content, max_line_length)`: counts comment blocks whose rewrapped output differs from the original, respecting pragmas. When `inline=True`, also counts overflowing inline comments that would be extracted. Used by `main()` to pre-scan files for the interactive progress indicator. Only counts non-pragma blocks (pragma blocks are auto-applied, not prompted).
+- `process_content(content, max_line_length, interactive, ..., changed_lines)`: pure string-in/string-out transformation; core rewrap logic shared by both file and stdin paths. When `changed_lines` (a set of 0-based line indices) is not `None`, only blocks overlapping those lines are processed.
+- `process_file(filepath, max_line_length, dry_run, interactive, ..., changed_lines)`: reads file, calls `process_content()`, conditionally writes back. Uses atomic writes (temp file + `os.replace()`) to protect original files against interruptions.
+- `count_changed_blocks(content, max_line_length, ..., changed_lines)`: counts comment blocks whose rewrapped output differs from the original, respecting pragmas. When `inline=True`, also counts overflowing inline comments that would be extracted. Used by `main()` to pre-scan files for the interactive progress indicator. Only counts non-pragma blocks (pragma blocks are auto-applied, not prompted). Respects `changed_lines` filtering.
+- `parse_diff_line_numbers(diff_text)` (in `diff.py`): parses `git diff -U0` output into a dict mapping file paths to sets of 0-based changed line indices.
+- `get_changed_lines(base)` (in `diff.py`): runs `git diff -U0` against a base ref and returns the parsed result. Raises `NotAGitRepoError` outside a git repo.
 
 ## Tooling
 
