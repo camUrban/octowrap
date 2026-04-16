@@ -21,6 +21,7 @@ import textwrap
 from pathlib import Path
 
 from octowrap.config import ConfigError, find_config_file, load_config
+from octowrap.diff import NotAGitRepoError, get_changed_lines, get_repo_root
 
 DEFAULT_EXCLUDES: list[str] = [
     ".git",
@@ -1217,6 +1218,18 @@ def main():
         default=None,
         help="Disable extraction of overflowing inline comments",
     )
+    parser.add_argument(
+        "--diff-only",
+        action="store_true",
+        default=None,
+        help="Only process comment blocks overlapping lines changed in git",
+    )
+    parser.add_argument(
+        "--diff-base",
+        type=str,
+        default=None,
+        help="Git ref to diff against (default: HEAD, implies --diff-only)",
+    )
 
     parser.add_argument(
         "--config",
@@ -1305,11 +1318,32 @@ def main():
     todo_multiline = config.get("todo-multiline", DEFAULT_TODO_MULTILINE)
     list_wrap = config.get("list-wrap", DEFAULT_LIST_WRAP)
 
+    # Diff-only: default False, config can override, --diff-only or --diff-base wins
+    diff_only = False
+    diff_base = "HEAD"
+    if args.diff_only is not None:
+        diff_only = True
+    elif args.diff_base is not None:
+        diff_only = True
+    elif config.get("diff-only", False):
+        diff_only = True
+    if args.diff_base is not None:
+        diff_base = args.diff_base
+    elif "diff-base" in config:
+        diff_base = config["diff-base"]
+
     if args.diff or args.check:
         args.dry_run = True
 
     # Handle stdin mode when '-' is passed as a path
     stdin_mode = any(str(p) == "-" for p in args.paths)
+
+    if diff_only and stdin_mode:
+        print(
+            "octowrap: error: --diff-only cannot be used with stdin",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
     if args.stdin_filename is not None and not stdin_mode:
         print(
@@ -1378,6 +1412,37 @@ def main():
         else:
             print(f"Warning: {path} not found, skipping")
 
+    # When diff-only is active, compute the set of changed lines per file once.
+    all_changed_lines: dict[str, set[int]] | None = None
+    repo_root: Path | None = None
+    if diff_only:
+        repo_root = get_repo_root()
+        if repo_root is None:
+            print(
+                "octowrap: error: --diff-only requires a git repository",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        try:
+            all_changed_lines = get_changed_lines(diff_base)
+        except NotAGitRepoError:
+            print(
+                "octowrap: error: --diff-only requires a git repository",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+    def _file_changed_lines(filepath: Path) -> set[int] | None:
+        """Look up the changed lines for *filepath*, or None if not filtering."""
+        if all_changed_lines is None:
+            return None
+        assert repo_root is not None
+        try:
+            rel_path = str(filepath.resolve().relative_to(repo_root))
+        except ValueError:
+            rel_path = str(filepath)
+        return all_changed_lines.get(rel_path, set())
+
     changed_count = 0
     error_count = 0
     interactive_state: dict = {}
@@ -1396,6 +1461,7 @@ def main():
                     todo_multiline=todo_multiline,
                     inline=args.inline,
                     list_wrap=list_wrap,
+                    changed_lines=_file_changed_lines(fp),
                 )
             except OSError:
                 pass  # Errors will be reported during the actual processing pass.
@@ -1418,6 +1484,7 @@ def main():
                 todo_multiline=todo_multiline,
                 inline=args.inline,
                 list_wrap=list_wrap,
+                changed_lines=_file_changed_lines(filepath),
             )
 
             if changed:

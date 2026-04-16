@@ -1000,3 +1000,215 @@ class TestDiffUtf8:
         main()
         out = capsys.readouterr().out
         assert "Erd\u0151s" in out
+
+
+# fmt: off
+TWO_BLOCK_CONTENT = (
+    b"# First block that was wrapped\n"   # line 0
+    b"# at a short width.\n"              # line 1
+    b"x = 1\n"                            # line 2
+    b"# Second block that was wrapped\n"  # line 3
+    b"# at a short width.\n"              # line 4
+)
+# fmt: on
+
+
+class TestDiffOnly:
+    """Tests for the --diff-only and --diff-base flags."""
+
+    @staticmethod
+    def _mock_diff(monkeypatch, repo_root, changed_lines_map):
+        """Mock the diff module functions imported by rewrap."""
+        monkeypatch.setattr("octowrap.rewrap.get_repo_root", lambda: repo_root)
+        calls = []
+
+        def _fake_get_changed_lines(base="HEAD"):
+            calls.append(base)
+            return changed_lines_map
+
+        monkeypatch.setattr(
+            "octowrap.rewrap.get_changed_lines", _fake_get_changed_lines
+        )
+        return calls
+
+    def test_diff_only_basic(self, tmp_path, monkeypatch, capsys):
+        """--diff-only only rewraps blocks overlapping changed lines."""
+        f = tmp_path / "a.py"
+        f.write_bytes(TWO_BLOCK_CONTENT)
+        rel = str(f.relative_to(tmp_path))
+        self._mock_diff(monkeypatch, tmp_path, {rel: {3, 4}})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        main()
+        content = f.read_text()
+        # First block unchanged
+        assert "# First block that was wrapped\n" in content
+        assert "# at a short width.\n" in content
+        # Second block rewrapped
+        assert "# Second block that was wrapped at a short width." in content
+
+    def test_diff_only_no_changes(self, tmp_path, monkeypatch, capsys):
+        """--diff-only with file not in diff reports 0 reformatted."""
+        f = tmp_path / "a.py"
+        f.write_bytes(TWO_BLOCK_CONTENT)
+        self._mock_diff(monkeypatch, tmp_path, {})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "0 file(s) reformatted." in out
+        # File should be unchanged
+        assert f.read_bytes() == TWO_BLOCK_CONTENT
+
+    def test_diff_base_implies_diff_only(self, tmp_path, monkeypatch, capsys):
+        """--diff-base without --diff-only still enables diff-only mode."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        calls = self._mock_diff(monkeypatch, tmp_path, {})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-base", "main", str(f)])
+        main()
+        assert calls == ["main"]
+
+    def test_diff_only_with_diff_base(self, tmp_path, monkeypatch, capsys):
+        """--diff-only --diff-base passes the custom base to get_changed_lines."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        calls = self._mock_diff(monkeypatch, tmp_path, {})
+        monkeypatch.setattr(
+            "sys.argv",
+            ["octowrap", "--diff-only", "--diff-base", "origin/main", str(f)],
+        )
+        main()
+        assert calls == ["origin/main"]
+
+    def test_diff_only_stdin_error(self, monkeypatch, capsys):
+        """--diff-only with stdin is an error."""
+        monkeypatch.setattr("sys.stdin", io.StringIO(""))
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", "-"])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "cannot be used with stdin" in err
+
+    def test_diff_only_not_git_repo(self, tmp_path, monkeypatch, capsys):
+        """--diff-only outside a git repo prints an error and exits 1."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("octowrap.rewrap.get_repo_root", lambda: None)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "requires a git repository" in err
+
+    def test_diff_only_config(self, tmp_path, monkeypatch, capsys):
+        """Diff-only = true in config enables diff-only mode."""
+        (tmp_path / "pyproject.toml").write_text("[tool.octowrap]\ndiff-only = true\n")
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.chdir(tmp_path)
+        self._mock_diff(monkeypatch, tmp_path, {})
+        monkeypatch.setattr("sys.argv", ["octowrap", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "0 file(s) reformatted." in out
+
+    def test_diff_base_config(self, tmp_path, monkeypatch, capsys):
+        """Diff-base in config sets the base ref."""
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.octowrap]\ndiff-base = "develop"\n'
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.chdir(tmp_path)
+        calls = self._mock_diff(monkeypatch, tmp_path, {})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        main()
+        assert calls == ["develop"]
+
+    def test_diff_only_check_clean(self, tmp_path, monkeypatch, capsys):
+        """--diff-only --check exits 0 when no changed blocks need rewrapping."""
+        f = tmp_path / "a.py"
+        f.write_bytes(TWO_BLOCK_CONTENT)
+        self._mock_diff(monkeypatch, tmp_path, {})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", "--check", str(f)])
+        main()  # should not raise
+        out = capsys.readouterr().out
+        assert "0 file(s) would be reformatted." in out
+
+    def test_diff_only_check_dirty(self, tmp_path, monkeypatch, capsys):
+        """--diff-only --check exits 1 when a changed block needs rewrapping."""
+        f = tmp_path / "a.py"
+        f.write_bytes(TWO_BLOCK_CONTENT)
+        rel = str(f.relative_to(tmp_path))
+        self._mock_diff(monkeypatch, tmp_path, {rel: {3, 4}})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", "--check", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+
+    def test_diff_only_interactive(self, tmp_path, monkeypatch, capsys):
+        """--diff-only -i only prompts for changed blocks."""
+        f = tmp_path / "a.py"
+        f.write_bytes(TWO_BLOCK_CONTENT)
+        rel = str(f.relative_to(tmp_path))
+        self._mock_diff(monkeypatch, tmp_path, {rel: {3, 4}})
+        call_count = 0
+
+        def counting_prompt():
+            nonlocal call_count
+            call_count += 1
+            return "a"
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", counting_prompt)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", "-i", str(f)])
+        main()
+        # Only the second block overlaps — one prompt
+        assert call_count == 1
+
+    def test_diff_only_path_resolution(self, tmp_path, monkeypatch, capsys):
+        """File paths are resolved relative to repo root for lookup."""
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        f = sub / "a.py"
+        f.write_bytes(TWO_BLOCK_CONTENT)
+        # The diff map uses repo-root-relative paths
+        self._mock_diff(monkeypatch, tmp_path, {"sub/a.py": {3, 4}})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        main()
+        content = f.read_text()
+        # First block unchanged, second rewrapped
+        assert "# First block that was wrapped\n" in content
+        assert "# Second block that was wrapped at a short width." in content
+
+    def test_diff_only_get_changed_lines_fails(self, tmp_path, monkeypatch, capsys):
+        """If get_repo_root succeeds but get_changed_lines raises, exit 1."""
+        from octowrap.diff import NotAGitRepoError
+
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("octowrap.rewrap.get_repo_root", lambda: tmp_path)
+
+        def _fail(base="HEAD"):
+            raise NotAGitRepoError("bad ref")
+
+        monkeypatch.setattr("octowrap.rewrap.get_changed_lines", _fail)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "requires a git repository" in err
+
+    def test_diff_only_file_outside_repo_root(self, tmp_path, monkeypatch, capsys):
+        """A file outside the repo root is treated as having no changed lines."""
+        # repo_root is a subdirectory; the file is in a sibling directory
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        outside = tmp_path / "other"
+        outside.mkdir()
+        f = outside / "a.py"
+        f.write_bytes(TWO_BLOCK_CONTENT)
+        self._mock_diff(monkeypatch, repo, {})
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "0 file(s) reformatted." in out
+        # File should be unchanged
+        assert f.read_bytes() == TWO_BLOCK_CONTENT
