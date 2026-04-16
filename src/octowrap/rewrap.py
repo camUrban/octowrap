@@ -1438,7 +1438,7 @@ def main():
             return None
         assert repo_root is not None
         try:
-            rel_path = str(filepath.resolve().relative_to(repo_root))
+            rel_path = filepath.resolve().relative_to(repo_root).as_posix()
         except ValueError:
             rel_path = str(filepath)
         return all_changed_lines.get(rel_path, set())
