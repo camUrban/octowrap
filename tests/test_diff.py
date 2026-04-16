@@ -1,5 +1,6 @@
 """Tests for octowrap.diff — unified diff parsing and git integration."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -222,6 +223,7 @@ class TestGetChangedLines:
             get_changed_lines()
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not available")
 class TestGetChangedLinesIntegration:
     """Integration tests using real git repos in tmp_path."""
 

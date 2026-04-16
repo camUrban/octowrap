@@ -1097,7 +1097,18 @@ class TestDiffOnly:
         with pytest.raises(SystemExit, match="1"):
             main()
         err = capsys.readouterr().err
-        assert "requires a git repository" in err
+        assert "must be run inside a git repository" in err
+
+    def test_diff_only_git_not_installed(self, tmp_path, monkeypatch, capsys):
+        """--diff-only without git on PATH prints a specific error and exits 1."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("octowrap.rewrap.shutil.which", lambda _cmd: None)
+        monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "not found on PATH" in err
 
     def test_diff_only_config(self, tmp_path, monkeypatch, capsys):
         """Diff-only = true in config enables diff-only mode."""
@@ -1194,7 +1205,7 @@ class TestDiffOnly:
         with pytest.raises(SystemExit, match="1"):
             main()
         err = capsys.readouterr().err
-        assert "requires a git repository" in err
+        assert "--diff-only failed: bad ref" in err
 
     def test_diff_only_file_outside_repo_root(self, tmp_path, monkeypatch, capsys):
         """A file outside the repo root is treated as having no changed lines."""

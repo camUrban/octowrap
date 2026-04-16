@@ -14,6 +14,7 @@ import difflib
 import fnmatch
 import os
 import re
+import shutil
 import stat
 import sys
 import tempfile
@@ -1416,18 +1417,24 @@ def main():
     all_changed_lines: dict[str, set[int]] | None = None
     repo_root: Path | None = None
     if diff_only:
+        if shutil.which("git") is None:
+            print(
+                "octowrap: error: --diff-only requires git (not found on PATH)",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
         repo_root = get_repo_root()
         if repo_root is None:
             print(
-                "octowrap: error: --diff-only requires a git repository",
+                "octowrap: error: --diff-only must be run inside a git repository",
                 file=sys.stderr,
             )
             raise SystemExit(1)
         try:
             all_changed_lines = get_changed_lines(diff_base)
-        except NotAGitRepoError:
+        except NotAGitRepoError as exc:
             print(
-                "octowrap: error: --diff-only requires a git repository",
+                f"octowrap: error: --diff-only failed: {exc}",
                 file=sys.stderr,
             )
             raise SystemExit(1)
