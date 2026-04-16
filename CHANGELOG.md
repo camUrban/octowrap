@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 - 2026-04-16
 
 ### Added
 - Incremental adoption via `--diff-only`: only process comment blocks overlapping lines changed in git, so teams can adopt octowrap gradually without reformatting the entire codebase
