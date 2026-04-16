@@ -615,6 +615,7 @@ def count_changed_blocks(
     todo_multiline: bool = True,
     inline: bool = True,
     list_wrap: bool = True,
+    changed_lines: set[int] | None = None,
 ) -> int:
     """Count comment blocks that will be interactively prompted.
 
@@ -622,6 +623,9 @@ def count_changed_blocks(
     Pragma blocks are auto-applied in ``process_content()`` (never prompted), so they
     are traversed here solely to track the ``disabled`` state.  When *inline* is
     ``True``, overflowing inline comments also contribute to the count.
+
+    When *changed_lines* is not ``None``, only blocks overlapping the given set of
+    0-based line indices are considered.
     """
     lines_stripped = [line.rstrip("\n\r") for line in content.splitlines(keepends=True)]
     blocks = parse_comment_blocks(lines_stripped)
@@ -631,7 +635,10 @@ def count_changed_blocks(
     for block in blocks:
         if block["type"] == "code":
             if not disabled and inline:
-                for line in block["lines"]:
+                for line_idx, line in enumerate(block["lines"]):
+                    if changed_lines is not None:
+                        if (block["start_idx"] + line_idx) not in changed_lines:
+                            continue
                     if _should_extract_inline(line, max_line_length):
                         count += 1
             continue
@@ -649,6 +656,14 @@ def count_changed_blocks(
 
         if disabled:
             continue
+
+        # Skip blocks that don't overlap with changed lines.
+        if changed_lines is not None:
+            block_range = range(
+                block["start_idx"], block["start_idx"] + len(block["lines"])
+            )
+            if not any(i in changed_lines for i in block_range):
+                continue
 
         rewrapped = rewrap_comment_block(
             block,
@@ -782,11 +797,16 @@ def process_content(
     todo_multiline: bool = True,
     inline: bool = True,
     list_wrap: bool = True,
+    changed_lines: set[int] | None = None,
 ) -> tuple[bool, str]:
     """Rewrap comment blocks in a string of Python source.
 
     Returns (changed, new_content).  When *_state* is a dict and the user presses quit
     in interactive mode, ``_state["quit"]`` is set to ``True``.
+
+    When *changed_lines* is not ``None``, only comment blocks whose line range overlaps
+    the given set of 0-based line indices are processed.  Blocks with no overlap are
+    preserved verbatim.
     """
     lines = content.splitlines(keepends=True)
 
@@ -812,6 +832,12 @@ def process_content(
                     if len(line.rstrip("\n")) <= max_line_length:
                         new_lines.append(line)
                         continue
+
+                    # Skip lines not in the changed set.
+                    if changed_lines is not None:
+                        if (block["start_idx"] + line_idx) not in changed_lines:
+                            new_lines.append(line)
+                            continue
 
                     # Extract the inline comment and build replacement lines.
                     extracted = extract_inline_comment(line)
@@ -979,6 +1005,15 @@ def process_content(
             new_lines.extend(block["lines"])
             continue
 
+        # When diff-only filtering is active, skip blocks that don't overlap.
+        if changed_lines is not None:
+            block_range = range(
+                block["start_idx"], block["start_idx"] + len(block["lines"])
+            )
+            if not any(i in changed_lines for i in block_range):
+                new_lines.extend(block["lines"])
+                continue
+
         # Use the normal rewrap logic.
         rewrapped = rewrap_comment_block(
             block,
@@ -1093,6 +1128,7 @@ def process_file(
     todo_multiline: bool = True,
     inline: bool = True,
     list_wrap: bool = True,
+    changed_lines: set[int] | None = None,
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
@@ -1112,6 +1148,7 @@ def process_file(
         todo_multiline=todo_multiline,
         inline=inline,
         list_wrap=list_wrap,
+        changed_lines=changed_lines,
     )
 
     if changed and not dry_run:
