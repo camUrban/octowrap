@@ -417,15 +417,28 @@ class TestInlineInteractive:
         assert "# octowrap: on" in content
 
     def test_flag(self, tmp_path, monkeypatch):
-        """Flagging inserts a FIXME comment and preserves the original line."""
+        """Flagging wraps FIXME + original line in octowrap off/on pragmas."""
         f = tmp_path / "t.py"
         f.write_bytes(INLINE_CONTENT)
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
+        assert "# octowrap: off" in content
+        assert "# octowrap: on" in content
         assert "# FIXME: Manually fix the below comment" in content
-        # Original line should be preserved below the FIXME
+        # Original line should be preserved inside the pragma region.
         assert "# This comment pushes the line way past the limit" in content
+
+    def test_flagged_inline_not_re_extracted_on_rerun(self, tmp_path, monkeypatch):
+        """A flagged inline comment stays pragma-protected on the next pass."""
+        f = tmp_path / "t.py"
+        f.write_bytes(INLINE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        process_file(f, max_line_length=88, interactive=True)
+        first_pass = f.read_bytes()
+        changed, _ = process_file(f, max_line_length=88)
+        assert not changed
+        assert f.read_bytes() == first_pass
 
     def test_quit(self, tmp_path, monkeypatch):
         """Quitting preserves the original line and sets quit state."""
