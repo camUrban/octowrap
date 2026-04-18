@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.1 - 2026-04-17
+
+### Added
+- JetBrains/PyCharm `# noinspection <InspectionName>` suppression comments are now recognized as tool directives and preserved in place on their own line instead of being merged into surrounding prose. Both single and comma-separated inspection names are supported.
+
+### Changed
+- Interactive mode (`-i`) now prompts at the paragraph level instead of the whole comment block. A block mixing prose, a TODO, and a tool directive now reviews as up to three separate diffs — one per changed paragraph — instead of one bundled diff that obscures what's changing. Unchanged paragraphs (preserved tool directives, dividers) pass through silently without prompting. Consecutive list items are grouped into a single prompt so multi-item lists review as one logical change. The `[X/Y]` progress indicator counts paragraphs instead of blocks. The `e` (exclude) and `f` (flag) actions apply to the selected paragraph, not the whole block.
+- The `f` (flag) action now wraps both the FIXME marker and the original paragraph in `# octowrap: off` / `# octowrap: on` pragmas, so a rerun skips the flagged region entirely instead of re-prompting on the bare original.
+
+### Fixed
+- `#` characters inside a string literal that spans multiple lines (e.g. a `#` fragment in a long URL inside a multi-line string) are no longer misread as inline comments and extracted. octowrap now uses Python's `tokenize` module to identify authoritative comment-start positions; on syntactically invalid Python, it falls back to the existing single-line string-aware scanner.
+- Pre-existing whitespace just inside brackets (`( x`, `x )`, `[ y`, `y ]`) is now stripped during comment rewrapping. This fixes a case where a prior wrap placed a bracket at the end (or start) of a line and `textwrap` then broke between the bracket and its contents on subsequent passes, orphaning an open paren at the end of a line.
+
 ## 0.5.0 - 2026-04-16
 
 ### Added

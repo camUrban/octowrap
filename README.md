@@ -19,9 +19,9 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Rewraps list items (bullets, numbered, lettered) with hanging indent aligned to the text after the marker; collects continuation lines and handles nesting naturally. Disable with `list-wrap = false`.
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
 - Extracts overflowing inline comments (`code  # comment`) into standalone block comments above the code line when the line exceeds the line length, then wraps them normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline`.
-- Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, etc.)
+- Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, `noinspection`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
-- Applies changes automatically by default, or use `-i` for interactive per block approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining blocks in the current file, `e` exclude, `f` flag, `s` skip, `q` quit). Flagging inserts a FIXME marker above the block for later human attention. Quitting stops all processing, including remaining files.
+- Applies changes automatically by default, or use `-i` for interactive per-paragraph approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining paragraphs in the file, `e` exclude, `f` flag, `s` skip, `q` quit). A single comment block that mixes prose, a TODO, and a tool directive reviews as separate diffs — one per changed paragraph — so you can see exactly what's changing. Consecutive list items group into a single prompt. Flagging wraps the paragraph with a FIXME marker and `# octowrap: off` / `# octowrap: on` pragmas so reruns skip it. Quitting stops all processing, including remaining files.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss
@@ -209,7 +209,7 @@ The most common use case is adding octowrap to pre-commit so it only enforces wr
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.0
+  rev: v0.5.1
   hooks:
     - id: octowrap
       args: [--diff-only]
@@ -219,7 +219,7 @@ Or in check-only mode (fail without modifying):
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.0
+  rev: v0.5.1
   hooks:
     - id: octowrap
       args: [--diff-only, --check]
@@ -253,7 +253,7 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.0
+  rev: v0.5.1
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
