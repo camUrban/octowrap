@@ -619,6 +619,27 @@ class TestJoinCommentLines:
         )
         assert _join_comment_lines(lines) == expected
 
+    def test_heals_space_after_open_paren(self):
+        """A pre-existing space after '(' is stripped after joining."""
+        lines = ["first time step", "( time step 0), occurs at 0 seconds."]
+        result = _join_comment_lines(lines)
+        assert result == "first time step (time step 0), occurs at 0 seconds."
+
+    def test_heals_space_before_close_paren(self):
+        """A pre-existing space before ')' is stripped after joining."""
+        assert _join_comment_lines(["foo (bar )"]) == "foo (bar)"
+
+    def test_heals_bracket_whitespace(self):
+        """Whitespace just inside ``[ ...
+
+        ]`` is stripped.
+        """
+        assert _join_comment_lines(["see [ section 1 ]"]) == "see [section 1]"
+
+    def test_preserves_bracketless_whitespace(self):
+        """Whitespace not adjacent to a bracket is left alone."""
+        assert _join_comment_lines(["a (b) c d"]) == "a (b) c d"
+
 
 class TestExtractListMarker:
     """Tests for extract_list_marker()."""

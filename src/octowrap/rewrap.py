@@ -323,6 +323,11 @@ def _join_comment_lines(lines: list[str]) -> str:
     a space to avoid introducing erroneous whitespace inside parenthesised text.  All
     other consecutive lines are joined with a single space, matching the behavior of
     ``" ".join()``.
+
+    After joining, any remaining whitespace immediately inside brackets (``( x``, ``x )``,
+    ``[ y``, ``y ]``) is stripped.  Such whitespace is typically an artifact of a prior
+    wrap that placed the bracket at the end (or start) of a line; removing it prevents
+    ``textwrap`` from breaking between the bracket and its contents on the next pass.
     """
     if not lines:
         return ""
@@ -336,6 +341,8 @@ def _join_comment_lines(lines: list[str]) -> str:
             result += line
         else:
             result += " " + line
+    result = re.sub(r"([(\[])\s+", r"\1", result)
+    result = re.sub(r"\s+([)\]])", r"\1", result)
     return result
 
 
