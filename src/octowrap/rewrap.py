@@ -12,6 +12,7 @@ rewraps them using textwrap. It preserves:
 import argparse
 import difflib
 import fnmatch
+import io
 import os
 import re
 import shutil
@@ -19,6 +20,7 @@ import stat
 import sys
 import tempfile
 import textwrap
+import tokenize
 from pathlib import Path
 
 from octowrap.config import ConfigError, find_config_file, load_config
@@ -599,13 +601,47 @@ def rewrap_comment_block(
     return result
 
 
-def _should_extract_inline(line: str, max_line_length: int) -> bool:
-    """Return ``True`` if *line* has an inline comment that should be extracted."""
+def compute_comment_positions(content: str) -> set[tuple[int, int]] | None:
+    """Return ``(lineno, col)`` positions of ``#`` characters that start real comments.
+
+    *lineno* is 1-indexed and *col* is 0-indexed, matching ``tokenize`` semantics.
+    Returns ``None`` when *content* is not valid Python — callers should fall back to
+    string-scanning heuristics (which cannot distinguish a ``#`` inside a multi-line
+    string from a real comment) in that case.
+    """
+    positions: set[tuple[int, int]] = set()
+    try:
+        readline = io.StringIO(content).readline
+        for tok in tokenize.generate_tokens(readline):
+            if tok.type == tokenize.COMMENT:
+                positions.add(tok.start)
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    return positions
+
+
+def _should_extract_inline(
+    line: str,
+    max_line_length: int,
+    line_no: int | None = None,
+    valid_positions: set[tuple[int, int]] | None = None,
+) -> bool:
+    """Return ``True`` if *line* has an inline comment that should be extracted.
+
+    When *valid_positions* is not ``None``, the ``#`` index found on *line* is
+    cross-checked against tokenize-derived comment starts to avoid false positives
+    such as a ``#`` inside a multi-line string literal.  *line_no* is the 1-indexed
+    line number in the source file.
+    """
     if len(line) <= max_line_length:
         return False
     result = extract_inline_comment(line)
     if result is None:
         return False
+    if valid_positions is not None:
+        idx = find_inline_comment(line)
+        if (line_no, idx) not in valid_positions:
+            return False
     _, comment_text = result
     return not is_tool_directive(comment_text)
 
@@ -632,6 +668,7 @@ def count_changed_blocks(
     """
     lines_stripped = [line.rstrip("\n\r") for line in content.splitlines(keepends=True)]
     blocks = parse_comment_blocks(lines_stripped)
+    comment_positions = compute_comment_positions(content)
     count = 0
     disabled = False
 
@@ -642,7 +679,12 @@ def count_changed_blocks(
                     if changed_lines is not None:
                         if (block["start_idx"] + line_idx) not in changed_lines:
                             continue
-                    if _should_extract_inline(line, max_line_length):
+                    if _should_extract_inline(
+                        line,
+                        max_line_length,
+                        line_no=block["start_idx"] + line_idx + 1,
+                        valid_positions=comment_positions,
+                    ):
                         count += 1
             continue
 
@@ -817,6 +859,7 @@ def process_content(
     lines_stripped = [line.rstrip("\n\r") for line in lines]
 
     blocks = parse_comment_blocks(lines_stripped)
+    comment_positions = compute_comment_positions(content)
 
     new_lines = []
     user_quit = False
@@ -847,6 +890,17 @@ def process_content(
                     if not extracted:
                         new_lines.append(line)
                         continue
+
+                    # Guard against a ``#`` that lives inside a multi-line string
+                    # literal: tokenize gives authoritative comment-start positions that
+                    # the single-line scanner in find_inline_comment() cannot derive on
+                    # its own.
+                    if comment_positions is not None:
+                        hash_col = find_inline_comment(line)
+                        abs_line_no = block["start_idx"] + line_idx + 1
+                        if (abs_line_no, hash_col) not in comment_positions:
+                            new_lines.append(line)
+                            continue
 
                     code_part, comment_text = extracted
                     if is_tool_directive(comment_text):

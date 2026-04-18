@@ -277,6 +277,70 @@ class TestShouldExtractInline:
         assert len(line) > 88
         assert _should_extract_inline(line, 88) is False
 
+    def test_valid_positions_blocks_non_comment_hash(self):
+        """When the #'s (line, col) is not in valid_positions, return False."""
+        line = "x = 1  # comment that is long enough to overflow the maximum length"
+        assert len(line) > 40
+        # Empty set means tokenize says there is NO real comment on this line.
+        result = _should_extract_inline(line, 40, line_no=1, valid_positions=set())
+        assert result is False
+
+    def test_valid_positions_allows_matching_hash(self):
+        """When (line, col) matches valid_positions, return True."""
+        line = "x = 1  # comment that is long enough to overflow the maximum length"
+        assert _should_extract_inline(line, 40, line_no=1, valid_positions={(1, 7)})
+
+
+class TestMultilineStringHash:
+    """Regression tests: # inside multi-line strings must not be extracted."""
+
+    def test_url_fragment_in_docstring_preserved(self):
+        """A URL with a '#' fragment inside a docstring should NOT be split."""
+        url = (
+            "https://en.wikipedia.org/wiki/"
+            "NACA_airfoil#Equation_for_a_cambered_4-digit_NACA_airfoil."
+        )
+        content = (
+            "def f():\n"
+            '    """Return a NACA airfoil equation.\n'
+            "\n"
+            "    Derived from:\n"
+            f"    {url}\n"
+            '    """\n'
+            "    return None\n"
+        )
+        _, new_content = process_content(content, max_line_length=88)
+        assert url in new_content
+        assert new_content == content
+
+    def test_hash_in_triple_quoted_assignment_preserved(self):
+        """A long line inside a multi-line string with a '#' is left alone."""
+        content = (
+            'x = """\n'
+            "    this is a very long line inside a string with a #hashtag in it here\n"
+            '"""\n'
+        )
+        _, new_content = process_content(content, max_line_length=40)
+        assert new_content == content
+
+    def test_real_inline_still_extracted(self):
+        """Verify the tokenize gate doesn't block legitimate inline extractions."""
+        content = (
+            "x = some_really_long_function_call(arg1, arg2)"
+            "  # This comment pushes the line way past the limit\n"
+        )
+        changed, new_content = process_content(content, max_line_length=88)
+        assert changed
+        assert "# This comment pushes" in new_content
+
+    def test_syntax_error_falls_back(self):
+        """When tokenize fails, processing falls back to the regex heuristic."""
+        # Unclosed string — tokenize raises, compute_comment_positions returns None.
+        content = 'x = "unterminated\ny = 1  # a short comment\n'
+        # Must not raise; behavior falls back to current scanning.
+        _, new_content = process_content(content, max_line_length=88)
+        assert "y = 1" in new_content
+
 
 # fmt: off
 INLINE_CONTENT = (
