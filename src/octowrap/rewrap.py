@@ -12,6 +12,7 @@ rewraps them using textwrap. It preserves:
 import argparse
 import difflib
 import fnmatch
+import io
 import os
 import re
 import shutil
@@ -19,6 +20,7 @@ import stat
 import sys
 import tempfile
 import textwrap
+import tokenize
 from pathlib import Path
 
 from octowrap.config import ConfigError, find_config_file, load_config
@@ -146,6 +148,7 @@ def is_tool_directive(text: str) -> bool:
         r"mypy:\s*\S",  # mypy config comments
         r"pyright:\s*\S",  # pyright config comments
         r"ruff:\s*noqa",  # ruff-specific suppression
+        r"noinspection\s+\S",  # JetBrains/PyCharm inspection suppression
         r"type:\s*\S+",  # PEP 484 type comments (e.g. type: int)
     ]
     stripped = text.strip()
@@ -320,6 +323,11 @@ def _join_comment_lines(lines: list[str]) -> str:
     a space to avoid introducing erroneous whitespace inside parenthesised text.  All
     other consecutive lines are joined with a single space, matching the behavior of
     ``" ".join()``.
+
+    After joining, any remaining whitespace immediately inside brackets (``( x``, ``x )``,
+    ``[ y``, ``y ]``) is stripped.  Such whitespace is typically an artifact of a prior
+    wrap that placed the bracket at the end (or start) of a line; removing it prevents
+    ``textwrap`` from breaking between the bracket and its contents on the next pass.
     """
     if not lines:
         return ""
@@ -333,6 +341,8 @@ def _join_comment_lines(lines: list[str]) -> str:
             result += line
         else:
             result += " " + line
+    result = re.sub(r"([(\[])\s+", r"\1", result)
+    result = re.sub(r"\s+([)\]])", r"\1", result)
     return result
 
 
@@ -408,63 +418,58 @@ def parse_comment_blocks(lines: list[str]) -> list[dict]:
     return result
 
 
-def rewrap_comment_block(
-    block: dict,
-    max_line_length: int = 88,
-    comment_prefix: str = "# ",
-    todo_patterns: list[str] | None = None,
-    todo_case_sensitive: bool = False,
-    todo_multiline: bool = True,
-    list_wrap: bool = True,
-) -> list[str]:
-    """Rewrap a comment block to the specified line length."""
-    indent = block["indent"]
-    lines = block["lines"]
+def _split_paragraphs(
+    contents: list[str],
+    todo_patterns: list[str],
+    todo_case_sensitive: bool,
+    todo_multiline: bool,
+    list_wrap: bool,
+) -> list[dict]:
+    """Split extracted comment *contents* into paragraph dicts.
 
-    if todo_patterns is None:
-        todo_patterns = DEFAULT_TODO_PATTERNS
-
-    # Calculate available width for text
-    prefix = indent + comment_prefix
-    text_width = max_line_length - len(prefix)
-
-    if text_width < 20:
-        # Too narrow to rewrap meaningfully
-        return lines
-
-    # Extract comment content
-    contents = []
-    for line in lines:
-        match = re.match(r"^\s*#\s?(.*)$", line)
-        if match:
-            contents.append(match.group(1))
-        else:
-            # Defensive: parse_comment_blocks only yields # lines, so the regex above
-            # will always match.
-            contents.append("")  # pragma: no cover
-
-    # Group into paragraphs (separated by blank comment lines or preserved lines)
-    paragraphs: list[tuple[str, list[str]]] = []
+    Each returned dict has ``type`` (``"wrap"``/``"blank"``/``"preserve"``/``"todo"``/
+    ``"list"``), ``contents`` (the content lines feeding that paragraph), and
+    ``raw_start``/``raw_end`` (indices into *contents*, usable as indices into the
+    parent block's raw ``# ...`` lines since the two lists are 1:1).
+    """
+    paragraphs: list[dict] = []
     current_para: list[str] = []
+    current_para_start: int | None = None
     i = 0
+
+    def _flush_wrap(end: int) -> None:
+        nonlocal current_para, current_para_start
+        if current_para:
+            assert current_para_start is not None
+            paragraphs.append(
+                {
+                    "type": "wrap",
+                    "contents": current_para,
+                    "raw_start": current_para_start,
+                    "raw_end": end,
+                }
+            )
+            current_para = []
+            current_para_start = None
 
     while i < len(contents):
         content = contents[i]
         if not content.strip():
-            # Blank line: end current paragraph
-            if current_para:
-                paragraphs.append(("wrap", current_para))
-                current_para = []
-            paragraphs.append(("blank", [""]))
+            _flush_wrap(i)
+            paragraphs.append(
+                {
+                    "type": "blank",
+                    "contents": [""],
+                    "raw_start": i,
+                    "raw_end": i + 1,
+                }
+            )
         elif is_list_item(content) and list_wrap:
-            # Flush current paragraph
-            if current_para:
-                paragraphs.append(("wrap", current_para))
-                current_para = []
+            _flush_wrap(i)
             marker_prefix, _ = extract_list_marker(content)
             cont_indent_len = len(marker_prefix)
             list_lines = [content]
-            # Collect continuation lines (indented to at least text-start column)
+            list_start = i
             while i + 1 < len(contents):
                 next_content = contents[i + 1]
                 if not next_content.strip():
@@ -483,128 +488,276 @@ def rewrap_comment_block(
                     list_lines.append(contents[i])
                 else:
                     break
-            paragraphs.append(("list", list_lines))
+            paragraphs.append(
+                {
+                    "type": "list",
+                    "contents": list_lines,
+                    "raw_start": list_start,
+                    "raw_end": i + 1,
+                }
+            )
         elif (
             should_preserve_line(content)
             or is_list_item(content)
             or is_tool_directive(content)
         ):
-            # Preserve this line as is
-            if current_para:
-                paragraphs.append(("wrap", current_para))
-                current_para = []
-            paragraphs.append(("preserve", [content]))
+            _flush_wrap(i)
+            paragraphs.append(
+                {
+                    "type": "preserve",
+                    "contents": [content],
+                    "raw_start": i,
+                    "raw_end": i + 1,
+                }
+            )
         elif is_todo_marker(content, todo_patterns, todo_case_sensitive):
-            # Flush current paragraph
-            if current_para:
-                paragraphs.append(("wrap", current_para))
-                current_para = []
-            # Collect TODO + continuation lines
+            _flush_wrap(i)
             todo_lines = [content]
+            todo_start = i
             if todo_multiline:
                 while i + 1 < len(contents) and is_todo_continuation(contents[i + 1]):
                     i += 1
                     todo_lines.append(contents[i])
-            paragraphs.append(("todo", todo_lines))
+            paragraphs.append(
+                {
+                    "type": "todo",
+                    "contents": todo_lines,
+                    "raw_start": todo_start,
+                    "raw_end": i + 1,
+                }
+            )
         else:
+            if current_para_start is None:
+                current_para_start = i
             current_para.append(content)
         i += 1
 
-    if current_para:
-        paragraphs.append(("wrap", current_para))
+    _flush_wrap(len(contents))
+    return paragraphs
 
-    # Rewrap and reconstruct
-    result = []
-    for para_type, para_contents in paragraphs:
-        if para_type == "blank":
-            result.append(indent + "#")
-        elif para_type == "preserve":
-            for content in para_contents:
-                if content:
-                    result.append(prefix + content)
-                else:
-                    # Defensive: preserved lines always have non-empty content since
-                    # blank lines are handled above.
-                    result.append(indent + "#")  # pragma: no cover
-        elif para_type == "todo":
-            marker_prefix, first_content = extract_todo_marker(
-                para_contents[0], todo_patterns, todo_case_sensitive
-            )
-            # Join first-line content + stripped continuation lines
-            parts = [first_content] + [c.strip() for c in para_contents[1:]]
-            full_text = _join_comment_lines(parts).strip()
 
-            # If there is no content after the TODO marker (e.g. "# TODO:"), preserve
-            # the original lines instead of emitting a blank line.
-            if not full_text:
-                for content in para_contents:
-                    result.append(prefix + content)
+def _render_paragraph(
+    para: dict,
+    indent: str,
+    prefix: str,
+    max_line_length: int,
+    text_width: int,
+    todo_patterns: list[str],
+    todo_case_sensitive: bool,
+) -> list[str]:
+    """Render a single paragraph dict to its rewrapped ``# ...`` output lines."""
+    para_type = para["type"]
+    para_contents = para["contents"]
+
+    if para_type == "blank":
+        return [indent + "#"]
+    if para_type == "preserve":
+        out: list[str] = []
+        for content in para_contents:
+            if content:
+                out.append(prefix + content)
             else:
-                initial = prefix + marker_prefix
-                subsequent = prefix + " "
-                first_width = max_line_length - len(initial)
-                cont_width = max_line_length - len(subsequent)
+                # Defensive: preserved lines always have non-empty content since blank
+                # lines are handled separately.
+                out.append(indent + "#")  # pragma: no cover
+        return out
+    if para_type == "todo":
+        marker_prefix, first_content = extract_todo_marker(
+            para_contents[0], todo_patterns, todo_case_sensitive
+        )
+        parts = [first_content] + [c.strip() for c in para_contents[1:]]
+        full_text = _join_comment_lines(parts).strip()
+        if not full_text:
+            return [prefix + c for c in para_contents]
+        initial = prefix + marker_prefix
+        subsequent = prefix + " "
+        first_width = max_line_length - len(initial)
+        cont_width = max_line_length - len(subsequent)
+        if first_width < 10 or cont_width < 10:
+            return [prefix + c for c in para_contents]
+        wrapped = textwrap.fill(
+            full_text,
+            width=max_line_length,
+            initial_indent=initial,
+            subsequent_indent=subsequent,
+            break_on_hyphens=False,
+            break_long_words=False,
+        )
+        return wrapped.split("\n")
+    if para_type == "list":
+        marker_prefix, first_content = extract_list_marker(para_contents[0])
+        parts = [first_content] + [c.strip() for c in para_contents[1:]]
+        full_text = _join_comment_lines(parts).strip()
+        if not full_text:
+            return [prefix + c for c in para_contents]
+        initial = prefix + marker_prefix
+        subsequent = prefix + " " * len(marker_prefix)
+        first_width = max_line_length - len(initial)
+        cont_width = max_line_length - len(subsequent)
+        if first_width < 10 or cont_width < 10:
+            return [prefix + c for c in para_contents]
+        wrapped = textwrap.fill(
+            full_text,
+            width=max_line_length,
+            initial_indent=initial,
+            subsequent_indent=subsequent,
+            break_on_hyphens=False,
+            break_long_words=False,
+        )
+        return wrapped.split("\n")
+    # wrap
+    text = _join_comment_lines(para_contents)
+    wrapped = textwrap.fill(
+        text, width=text_width, break_on_hyphens=False, break_long_words=False
+    )
+    return [prefix + line for line in wrapped.split("\n")]
 
-                if first_width < 10 or cont_width < 10:
-                    # Too narrow — preserve as-is
-                    for content in para_contents:
-                        result.append(prefix + content)
-                else:
-                    wrapped = textwrap.fill(
-                        full_text,
-                        width=max_line_length,
-                        initial_indent=initial,
-                        subsequent_indent=subsequent,
-                        break_on_hyphens=False,
-                        break_long_words=False,
-                    )
-                    result.extend(wrapped.split("\n"))
-        elif para_type == "list":
-            marker_prefix, first_content = extract_list_marker(para_contents[0])
-            parts = [first_content] + [c.strip() for c in para_contents[1:]]
-            full_text = _join_comment_lines(parts).strip()
 
-            if not full_text:
-                # Bare marker with no content (e.g. "# -") — preserve
-                for content in para_contents:
-                    result.append(prefix + content)
-            else:
-                initial = prefix + marker_prefix
-                subsequent = prefix + " " * len(marker_prefix)
-                first_width = max_line_length - len(initial)
-                cont_width = max_line_length - len(subsequent)
+def _block_prompt_units(
+    block: dict,
+    max_line_length: int = 88,
+    comment_prefix: str = "# ",
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
+    list_wrap: bool = True,
+) -> list[dict]:
+    """Split *block* into per-prompt rewrap units.
 
-                if first_width < 10 or cont_width < 10:
-                    for content in para_contents:
-                        result.append(prefix + content)
-                else:
-                    wrapped = textwrap.fill(
-                        full_text,
-                        width=max_line_length,
-                        initial_indent=initial,
-                        subsequent_indent=subsequent,
-                        break_on_hyphens=False,
-                        break_long_words=False,
-                    )
-                    result.extend(wrapped.split("\n"))
-        else:  # wrap
-            text = _join_comment_lines(para_contents)
-            wrapped = textwrap.fill(
-                text, width=text_width, break_on_hyphens=False, break_long_words=False
+    Each returned dict has ``raw_start`` (offset into ``block["lines"]``),
+    ``original`` (the original raw lines for this unit), and ``rewrapped`` (the
+    rewrapped output lines for this unit).  Consecutive list-item paragraphs are
+    merged into a single unit so that a multi-item list is presented as one logical
+    change rather than item by item.
+    """
+    indent = block["indent"]
+    raw_lines = block["lines"]
+
+    if todo_patterns is None:
+        todo_patterns = DEFAULT_TODO_PATTERNS
+
+    prefix = indent + comment_prefix
+    text_width = max_line_length - len(prefix)
+
+    if text_width < 20:
+        return [
+            {"raw_start": 0, "original": list(raw_lines), "rewrapped": list(raw_lines)}
+        ]
+
+    contents: list[str] = []
+    for line in raw_lines:
+        match = re.match(r"^\s*#\s?(.*)$", line)
+        if match:
+            contents.append(match.group(1))
+        else:
+            # Defensive: parse_comment_blocks only yields # lines, so the regex above
+            # will always match.
+            contents.append("")  # pragma: no cover
+
+    paragraphs = _split_paragraphs(
+        contents, todo_patterns, todo_case_sensitive, todo_multiline, list_wrap
+    )
+
+    # Group consecutive list paragraphs into a single prompt unit.
+    groups: list[list[dict]] = []
+    for para in paragraphs:
+        if groups and para["type"] == "list" and groups[-1][-1]["type"] == "list":
+            groups[-1].append(para)
+        else:
+            groups.append([para])
+
+    units: list[dict] = []
+    for group in groups:
+        raw_start = group[0]["raw_start"]
+        raw_end = group[-1]["raw_end"]
+        original = list(raw_lines[raw_start:raw_end])
+        rewrapped: list[str] = []
+        for para in group:
+            rewrapped.extend(
+                _render_paragraph(
+                    para,
+                    indent,
+                    prefix,
+                    max_line_length,
+                    text_width,
+                    todo_patterns,
+                    todo_case_sensitive,
+                )
             )
-            for wrapped_line in wrapped.split("\n"):
-                result.append(prefix + wrapped_line)
+        units.append(
+            {"raw_start": raw_start, "original": original, "rewrapped": rewrapped}
+        )
 
-    return result
+    return units
 
 
-def _should_extract_inline(line: str, max_line_length: int) -> bool:
-    """Return ``True`` if *line* has an inline comment that should be extracted."""
+def rewrap_comment_block(
+    block: dict,
+    max_line_length: int = 88,
+    comment_prefix: str = "# ",
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
+    list_wrap: bool = True,
+) -> list[str]:
+    """Rewrap a comment block to the specified line length.
+
+    Returns the full flat list of rewrapped ``# ...`` output lines, concatenated
+    across paragraph prompt units.
+    """
+    units = _block_prompt_units(
+        block,
+        max_line_length=max_line_length,
+        comment_prefix=comment_prefix,
+        todo_patterns=todo_patterns,
+        todo_case_sensitive=todo_case_sensitive,
+        todo_multiline=todo_multiline,
+        list_wrap=list_wrap,
+    )
+    return [line for unit in units for line in unit["rewrapped"]]
+
+
+def compute_comment_positions(content: str) -> set[tuple[int, int]] | None:
+    """Return ``(lineno, col)`` positions of ``#`` characters that start real comments.
+
+    *lineno* is 1-indexed and *col* is 0-indexed, matching ``tokenize`` semantics.
+    Returns ``None`` when *content* is not valid Python — callers should fall back to
+    string-scanning heuristics (which cannot distinguish a ``#`` inside a multi-line
+    string from a real comment) in that case.
+    """
+    positions: set[tuple[int, int]] = set()
+    try:
+        readline = io.StringIO(content).readline
+        for tok in tokenize.generate_tokens(readline):
+            if tok.type == tokenize.COMMENT:
+                positions.add(tok.start)
+    except (tokenize.TokenError, SyntaxError, IndentationError):
+        return None
+    return positions
+
+
+def _should_extract_inline(
+    line: str,
+    max_line_length: int,
+    line_no: int | None = None,
+    valid_positions: set[tuple[int, int]] | None = None,
+) -> bool:
+    """Return ``True`` if *line* has an inline comment that should be extracted.
+
+    When *valid_positions* is not ``None``, the ``#`` index found on *line* is
+    cross-checked against tokenize-derived comment starts to avoid false positives
+    such as a ``#`` inside a multi-line string literal.  *line_no* is the 1-indexed
+    line number in the source file.
+    """
     if len(line) <= max_line_length:
         return False
     result = extract_inline_comment(line)
     if result is None:
         return False
+    if valid_positions is not None:
+        idx = find_inline_comment(line)
+        if (line_no, idx) not in valid_positions:
+            return False
     _, comment_text = result
     return not is_tool_directive(comment_text)
 
@@ -631,6 +784,7 @@ def count_changed_blocks(
     """
     lines_stripped = [line.rstrip("\n\r") for line in content.splitlines(keepends=True)]
     blocks = parse_comment_blocks(lines_stripped)
+    comment_positions = compute_comment_positions(content)
     count = 0
     disabled = False
 
@@ -641,7 +795,12 @@ def count_changed_blocks(
                     if changed_lines is not None:
                         if (block["start_idx"] + line_idx) not in changed_lines:
                             continue
-                    if _should_extract_inline(line, max_line_length):
+                    if _should_extract_inline(
+                        line,
+                        max_line_length,
+                        line_no=block["start_idx"] + line_idx + 1,
+                        valid_positions=comment_positions,
+                    ):
                         count += 1
             continue
 
@@ -667,7 +826,7 @@ def count_changed_blocks(
             if not any(i in changed_lines for i in block_range):
                 continue
 
-        rewrapped = rewrap_comment_block(
+        units = _block_prompt_units(
             block,
             max_line_length,
             todo_patterns=todo_patterns,
@@ -675,8 +834,9 @@ def count_changed_blocks(
             todo_multiline=todo_multiline,
             list_wrap=list_wrap,
         )
-        if rewrapped != block["lines"]:
-            count += 1
+        for unit in units:
+            if unit["original"] != unit["rewrapped"]:
+                count += 1
 
     return count
 
@@ -816,6 +976,7 @@ def process_content(
     lines_stripped = [line.rstrip("\n\r") for line in lines]
 
     blocks = parse_comment_blocks(lines_stripped)
+    comment_positions = compute_comment_positions(content)
 
     new_lines = []
     user_quit = False
@@ -846,6 +1007,17 @@ def process_content(
                     if not extracted:
                         new_lines.append(line)
                         continue
+
+                    # Guard against a ``#`` that lives inside a multi-line string
+                    # literal: tokenize gives authoritative comment-start positions that
+                    # the single-line scanner in find_inline_comment() cannot derive on
+                    # its own.
+                    if comment_positions is not None:
+                        hash_col = find_inline_comment(line)
+                        abs_line_no = block["start_idx"] + line_idx + 1
+                        if (abs_line_no, hash_col) not in comment_positions:
+                            new_lines.append(line)
+                            continue
 
                     code_part, comment_text = extracted
                     if is_tool_directive(comment_text):
@@ -920,8 +1092,10 @@ def process_content(
                                     break_on_hyphens=False,
                                     break_long_words=False,
                                 )
+                                new_lines.append(f"{indent}# octowrap: off")
                                 new_lines.extend(wrapped.split("\n"))
                                 new_lines.append(line)
+                                new_lines.append(f"{indent}# octowrap: on")
                             elif action == "q":
                                 user_quit = True
                                 if _state is not None:
@@ -1016,8 +1190,9 @@ def process_content(
                 new_lines.extend(block["lines"])
                 continue
 
-        # Use the normal rewrap logic.
-        rewrapped = rewrap_comment_block(
+        # Split the block into per-prompt paragraph units (consecutive list items are
+        # grouped into a single unit).
+        units = _block_prompt_units(
             block,
             max_line_length,
             todo_patterns=todo_patterns,
@@ -1026,12 +1201,24 @@ def process_content(
             list_wrap=list_wrap,
         )
 
-        if not interactive:
-            new_lines.extend(rewrapped)
-        elif accept_all:
-            new_lines.extend(rewrapped)
-        else:
-            # Build progress string if pre-scan totals are available.
+        for unit in units:
+            original = unit["original"]
+            rewrapped = unit["rewrapped"]
+
+            if not interactive:
+                new_lines.extend(rewrapped)
+                continue
+            if accept_all:
+                new_lines.extend(rewrapped)
+                continue
+            if user_quit:
+                new_lines.extend(original)
+                continue
+            if original == rewrapped:
+                # Unchanged paragraph — pass through silently, no prompt.
+                new_lines.extend(original)
+                continue
+
             progress = ""
             if (
                 _state is not None
@@ -1041,58 +1228,53 @@ def process_content(
                 _state["block_current"] = _state.get("block_current", 0) + 1
                 progress = f"[{_state['block_current']}/{_state['block_total']}]"
 
-            has_changes = not user_quit and show_block_diff(
-                block["lines"],
+            show_block_diff(
+                original,
                 rewrapped,
-                block["start_idx"],
+                block["start_idx"] + unit["raw_start"],
                 filepath=filepath,
                 progress=progress,
             )
 
-            if not has_changes and progress:
-                # Block had no actual diff; undo the counter increment.
-                _state["block_current"] -= 1
+            action = prompt_user()
 
-            if has_changes:
-                action = prompt_user()
-
-                if action == "A":
-                    accept_all = True
-                    new_lines.extend(rewrapped)
-                elif action == "a":
-                    new_lines.extend(rewrapped)
-                elif action == "e":
-                    indent = block["indent"]
-                    new_lines.append(f"{indent}# octowrap: off")
-                    new_lines.extend(block["lines"])
-                    new_lines.append(f"{indent}# octowrap: on")
-                elif action == "f":
-                    indent = block["indent"]
-                    initial = f"{indent}# FIXME: "
-                    subsequent = f"{indent}#  "
-                    flag_text = (
-                        "Manually fix the below comment"
-                        " (flagged using octowrap in interactive mode)."
-                    )
-                    wrapped = textwrap.fill(
-                        flag_text,
-                        width=max_line_length,
-                        initial_indent=initial,
-                        subsequent_indent=subsequent,
-                        break_on_hyphens=False,
-                        break_long_words=False,
-                    )
-                    new_lines.extend(wrapped.split("\n"))
-                    new_lines.extend(block["lines"])
-                elif action == "q":
-                    user_quit = True
-                    if _state is not None:
-                        _state["quit"] = True
-                    new_lines.extend(block["lines"])
-                else:  # skip
-                    new_lines.extend(block["lines"])
-            else:
-                new_lines.extend(block["lines"])
+            if action == "A":
+                accept_all = True
+                new_lines.extend(rewrapped)
+            elif action == "a":
+                new_lines.extend(rewrapped)
+            elif action == "e":
+                indent = block["indent"]
+                new_lines.append(f"{indent}# octowrap: off")
+                new_lines.extend(original)
+                new_lines.append(f"{indent}# octowrap: on")
+            elif action == "f":
+                indent = block["indent"]
+                initial = f"{indent}# FIXME: "
+                subsequent = f"{indent}#  "
+                flag_text = (
+                    "Manually fix the below comment"
+                    " (flagged using octowrap in interactive mode)."
+                )
+                wrapped = textwrap.fill(
+                    flag_text,
+                    width=max_line_length,
+                    initial_indent=initial,
+                    subsequent_indent=subsequent,
+                    break_on_hyphens=False,
+                    break_long_words=False,
+                )
+                new_lines.append(f"{indent}# octowrap: off")
+                new_lines.extend(wrapped.split("\n"))
+                new_lines.extend(original)
+                new_lines.append(f"{indent}# octowrap: on")
+            elif action == "q":
+                user_quit = True
+                if _state is not None:
+                    _state["quit"] = True
+                new_lines.extend(original)
+            else:  # skip
+                new_lines.extend(original)
 
     # Restore the original line ending style.
     if lines and lines[0].endswith("\r\n"):

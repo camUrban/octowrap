@@ -249,6 +249,21 @@ class TestHyphenAndLongWordHandling:
         second = rewrap_comment_block(make_block(first), max_line_length=50)
         assert first == second
 
+    def test_heals_space_after_open_paren(self):
+        """A pre-existing ``( x`` artifact is healed so the wrap doesn't split it."""
+        block = make_block(
+            [
+                "# Get this solver's time step characteristics. Note that the first time step",
+                "# ( time step 0), occurs at 0 seconds.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        joined = " ".join(line.lstrip("# ") for line in result)
+        assert "(time step 0)" in joined
+        assert "( time step 0)" not in joined
+        for line in result:
+            assert not line.rstrip().endswith("(")
+
     def test_todo_hyphenated_word_not_broken(self):
         """Hyphenated words in TODO comments should not be broken at hyphens."""
         block = make_block(

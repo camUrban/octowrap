@@ -5,6 +5,7 @@ import pytest
 
 # noinspection PyProtectedMember
 from octowrap.rewrap import (
+    _block_prompt_units,
     _relative_path,
     count_changed_blocks,
     process_content,
@@ -379,6 +380,33 @@ class TestProcessFileInteractive:
             if line.startswith("#  "):
                 assert line.startswith("#  ")
 
+    @pytest.mark.parametrize("width", [22, 25, 30, 40, 60, 88])
+    def test_flag_text_never_overflows(self, tmp_path, monkeypatch, width):
+        """The FIXME marker octowrap inserts must itself respect max_line_length.
+
+        Sampled across the range where the flag action can actually fire (widths below
+        the rewrap text_width floor of 20 do not trigger a prompt at all).
+        """
+        f = tmp_path / "t.py"
+        # A block long enough to guarantee a prompt at every sampled width.
+        f.write_bytes(
+            b"# This is a comment that was wrapped at a short width previously "
+            b"and keeps going on well past any sane line length limit.\n"
+            b"# Second line of the same paragraph to force a wrap operation.\n"
+        )
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        _, content = process_file(f, max_line_length=width, interactive=True)
+        flag_lines = [
+            ln
+            for ln in content.splitlines()
+            if ln.startswith("# FIXME: ") or ln.startswith("#  ")
+        ]
+        assert flag_lines, f"expected a FIXME block at width={width}"
+        for line in flag_lines:
+            assert len(line) <= width, (
+                f"flag line overflows width={width}: {len(line)} chars: {line!r}"
+            )
+
     def test_flag_then_accept(self, tmp_path, monkeypatch):
         """Flag on first block and accept on second works correctly."""
         f = tmp_path / "t.py"
@@ -401,22 +429,270 @@ class TestProcessFileInteractive:
         # Second block should be rewrapped
         assert "# Second block that was also wrapped at a short width." in content
 
-    def test_flagged_block_gets_rewrapped_on_rerun(self, tmp_path, monkeypatch):
-        """After flagging, re-running presents the original block for rewrapping."""
+    def test_flag_wraps_block_with_pragmas(self, tmp_path, monkeypatch):
+        """Flagging wraps the FIXME marker + original block in octowrap off/on
+        pragmas."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        lines = content.splitlines()
+        off_idx = lines.index("# octowrap: off")
+        on_idx = lines.index("# octowrap: on")
+        between = lines[off_idx + 1 : on_idx]
+        # The pragma region contains the FIXME marker AND the unchanged original.
+        assert between[0].startswith("# FIXME: Manually fix the below comment")
+        assert "# This is a comment that was wrapped" in between
+        assert "# at a short width previously." in between
+
+    def test_flagged_block_not_rewrapped_on_rerun(self, tmp_path, monkeypatch):
+        """Re-running on a flagged file leaves the pragma-protected region untouched."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
         process_file(f, max_line_length=88, interactive=True)
-        # Re-run in non-interactive mode — the FIXME is a TODO marker and stays, but the
-        # original block below it is still wrappable.
+        first_pass = f.read_bytes()
+        # Second run in batch mode — nothing should change because the pragmas disable
+        # rewrapping inside the flagged region.
         changed, content = process_file(f, max_line_length=88)
-        # The FIXME comment should still be present
-        assert "# FIXME: Manually fix the below comment" in content
-        # The original block should have been rewrapped
+        assert not changed
+        assert f.read_bytes() == first_pass
+        # Original wrapped form is preserved; no joined rewrap line appeared.
         assert (
             "# This is a comment that was wrapped at a short width previously."
+            not in content
+        )
+
+
+class TestBlockPromptUnits:
+    """Tests for _block_prompt_units() paragraph-level splitting."""
+
+    @staticmethod
+    def _block(lines: list[str], indent: str = "") -> dict:
+        return {
+            "type": "comment_block",
+            "lines": lines,
+            "indent": indent,
+            "start_idx": 0,
+        }
+
+    def test_single_prose_block_is_one_unit(self):
+        """A plain prose block returns exactly one prompt unit."""
+        block = self._block(
+            [
+                "# This is a comment that was wrapped",
+                "# at a short width previously.",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+
+    def test_prose_plus_todo_split_into_two_units(self):
+        """A block containing prose followed by a TODO yields two prompt units."""
+        block = self._block(
+            [
+                "# Initialize variables that hold data which characterizes this panel.",
+                "# These values will be overwritten during the collapse geometry step.",
+                "# TODO: Compact the vortex arrays to only contain trailing edge panels.",
+                "#  The current arrays waste ~93% of the expanded kernel computation.",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 2
+        # First unit is the prose paragraph.
+        assert all("TODO:" not in ln for ln in units[0]["rewrapped"])
+        # Second unit carries the TODO marker.
+        assert any("TODO:" in ln for ln in units[1]["rewrapped"])
+
+    def test_tool_directive_is_its_own_no_op_unit(self):
+        """A tool directive sits in its own unit where original == rewrapped."""
+        block = self._block(
+            [
+                "# This module is inherently coupled to class internals, so accessing a",
+                "# private attribute directly is acceptable here.",
+                "# noinspection PyProtectedMember",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        # Prose unit + directive unit.
+        assert len(units) == 2
+        directive_unit = units[-1]
+        assert directive_unit["original"] == directive_unit["rewrapped"]
+        assert directive_unit["original"] == ["# noinspection PyProtectedMember"]
+
+    def test_consecutive_list_items_grouped(self):
+        """Adjacent list items merge into a single prompt unit."""
+        block = self._block(
+            [
+                "# - alpha item one that keeps going a while to force rewrapping",
+                "# - beta item two also long enough to need the wrap treatment",
+                "# - gamma item three here is the last one in the group",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+        assert units[0]["raw_start"] == 0
+        assert len(units[0]["original"]) == 3
+
+    def test_list_split_by_blank_line(self):
+        """A blank line between list items splits them into separate units."""
+        block = self._block(
+            [
+                "# - alpha",
+                "# - beta",
+                "#",
+                "# - gamma",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        # Two list groups plus the blank line in between.
+        assert len(units) == 3
+        assert [u["raw_start"] for u in units] == [0, 2, 3]
+
+    def test_raw_start_is_block_relative(self):
+        """``raw_start`` is an offset into ``block['lines']``, not an absolute line."""
+        block = self._block(
+            [
+                "# First paragraph of prose that is long enough to wrap in a block.",
+                "#",
+                "# TODO: Second paragraph is a todo marker.",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert [u["raw_start"] for u in units] == [0, 1, 2]
+
+    def test_adjacent_todo_markers_are_separate_units(self):
+        """Adjacent TODO-style markers (no blank line) each get their own unit.
+
+        Unlike list items, todo-type paragraphs are NOT grouped — each marker is a
+        distinct task and users may want to accept/skip them independently.
+        """
+        block = self._block(
+            [
+                "# TODO: first task that is long enough to trigger a rewrap at 88 chars.",
+                "# FIXME: second task that also exceeds the line length limit.",
+                "# TODO: third task rounding out the adjacent todo cluster.",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 3
+        assert [u["raw_start"] for u in units] == [0, 1, 2]
+        assert all(len(u["original"]) == 1 for u in units)
+
+    def test_adjacent_todo_with_continuations_stay_separate(self):
+        """TODO continuation lines fold into their own todo, but adjacent TODOs stay in
+        distinct units."""
+        block = self._block(
+            [
+                "# TODO: first task with a long description needing more room",
+                "#  that spans onto a continuation line beneath it.",
+                "# TODO: second task that also needs its own prompt unit.",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 2
+        # First unit absorbs its continuation line.
+        assert len(units[0]["original"]) == 2
+        assert len(units[1]["original"]) == 1
+
+
+class TestInteractivePerParagraph:
+    """Tests for per-paragraph interactive prompting."""
+
+    @staticmethod
+    def _mixed_block_content() -> bytes:
+        # fmt: off
+        return (
+            b"# Initialize variables that hold data which characterizes this panel.\n"
+            b"# These values will be overwritten during the collapse geometry step.\n"
+            b"# TODO: Compact the vortex arrays to only contain trailing edge panels.\n"
+            b"#  The current arrays waste ~93% of the expanded kernel computation.\n"
+        )
+        # fmt: on
+
+    def test_prose_and_todo_prompted_separately(self, tmp_path, monkeypatch):
+        """A block with prose + TODO triggers exactly two prompts."""
+        f = tmp_path / "t.py"
+        f.write_bytes(self._mixed_block_content())
+        call_count = 0
+
+        def counting_prompt() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "a"
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", counting_prompt)
+        changed, _ = process_file(f, max_line_length=88, interactive=True)
+        assert changed
+        assert call_count == 2
+
+    def test_tool_directive_does_not_prompt(self, tmp_path, monkeypatch):
+        """A no-op tool directive alongside wrappable prose does not add a prompt."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# This module is inherently coupled to class internals, so accessing a\n"
+            b"# private attribute directly is acceptable here.\n"
+            b"# noinspection PyProtectedMember\n"
+        )
+        # fmt: on
+        call_count = 0
+
+        def counting_prompt() -> str:
+            nonlocal call_count
+            call_count += 1
+            return "a"
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", counting_prompt)
+        process_file(f, max_line_length=88, interactive=True)
+        assert call_count == 1
+
+    def test_skip_one_paragraph_accept_next(self, tmp_path, monkeypatch):
+        """Skipping the prose paragraph keeps it while the TODO still rewraps."""
+        f = tmp_path / "t.py"
+        f.write_bytes(self._mixed_block_content())
+        responses = iter(["s", "a"])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        # The prose paragraph stays split across two lines (skipped).
+        assert (
+            "# Initialize variables that hold data which characterizes this panel.\n"
             in content
         )
+        # The TODO paragraph is now rewrapped onto one content line plus a continuation
+        # prefix.
+        assert (
+            "# TODO: Compact the vortex arrays to only contain trailing edge panels"
+            in content
+        )
+
+    def test_exclude_wraps_only_the_paragraph(self, tmp_path, monkeypatch):
+        """Excluding the TODO wraps only that paragraph in octowrap off/on pragmas."""
+        f = tmp_path / "t.py"
+        f.write_bytes(self._mixed_block_content())
+        responses = iter(["a", "e"])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        lines = content.splitlines()
+        off_idx = lines.index("# octowrap: off")
+        on_idx = lines.index("# octowrap: on")
+        # The pragmas bracket just the TODO paragraph (2 original lines).
+        between = lines[off_idx + 1 : on_idx]
+        assert between == [
+            "# TODO: Compact the vortex arrays to only contain trailing edge panels.",
+            "#  The current arrays waste ~93% of the expanded kernel computation.",
+        ]
+
+    def test_count_changed_blocks_counts_paragraphs(self):
+        """count_changed_blocks reports paragraph-level prompt counts."""
+        content = (
+            "# Initialize variables that hold data which characterizes this panel.\n"
+            "# These values will be overwritten during the collapse geometry step.\n"
+            "# TODO: Compact the vortex arrays to only contain trailing edge panels.\n"
+            "#  The current arrays waste ~93% of the expanded kernel computation.\n"
+        )
+        count = count_changed_blocks(content, max_line_length=88)
+        assert count == 2
 
 
 class TestToolDirectivePreservation:

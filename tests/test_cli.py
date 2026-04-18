@@ -857,6 +857,45 @@ class TestInteractiveProgress:
         # Only one block changes, so total should be 1
         assert "[1/1]" in out
 
+    def test_progress_counts_paragraphs_within_block(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A mixed prose+TODO block counts as two paragraphs, not one block."""
+        content = (
+            b"# First prose paragraph that needs rewrapping across its lines here.\n"
+            b"# continues here on a second line.\n"
+            b"# TODO: Second paragraph is a todo that also needs a rewrap operation.\n"
+            b"#  with a continuation line here.\n"
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(content)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        # Two changed paragraphs in one block → [1/2] and [2/2].
+        assert "[1/2]" in out
+        assert "[2/2]" in out
+
+    def test_progress_skips_no_op_paragraphs_in_block(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A tool directive sharing a block with wrappable prose is not counted."""
+        content = (
+            b"# This module is inherently coupled to class internals, so accessing a\n"
+            b"# private attribute directly is acceptable here.\n"
+            b"# noinspection PyProtectedMember\n"
+        )
+        f = tmp_path / "a.py"
+        f.write_bytes(content)
+        monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        main()
+        out = capsys.readouterr().out
+        # Only the prose paragraph changes; the directive is a silent no-op.
+        assert "[1/1]" in out
+        assert "[1/2]" not in out
+
     def test_progress_pragma_disables_counting(self, tmp_path, monkeypatch, capsys):
         """Blocks after octowrap: off (without matching on) are not counted."""
         content = (
