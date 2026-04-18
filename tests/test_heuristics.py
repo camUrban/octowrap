@@ -287,6 +287,8 @@ class TestIsToolDirective:
             "mypy: disable-error-code",
             "pyright: reportGeneralTypeIssues=false",
             "ruff: noqa: F401",
+            "noinspection PyProtectedMember",
+            "noinspection PyUnusedLocal,PyMethodMayBeStatic",
         ],
         ids=[
             "type_ignore",
@@ -309,6 +311,8 @@ class TestIsToolDirective:
             "mypy_disable",
             "pyright_report",
             "ruff_noqa",
+            "noinspection_single",
+            "noinspection_multi",
         ],
     )
     def test_detects_directives(self, text):

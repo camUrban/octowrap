@@ -146,6 +146,7 @@ def is_tool_directive(text: str) -> bool:
         r"mypy:\s*\S",  # mypy config comments
         r"pyright:\s*\S",  # pyright config comments
         r"ruff:\s*noqa",  # ruff-specific suppression
+        r"noinspection\s+\S",  # JetBrains/PyCharm inspection suppression
         r"type:\s*\S+",  # PEP 484 type comments (e.g. type: int)
     ]
     stripped = text.strip()
