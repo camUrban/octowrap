@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Section header detection: lines like `# === Title ===`, `# --- Title ---`, `# ### Title ###`, `# *** Title ***`, and `# ___ Title ___` are now preserved verbatim instead of being merged into surrounding prose. Requires the same delimiter character (`-`, `=`, `#`, `*`, `_`) on both sides with at least three of that character per side; asymmetric counts (e.g. `# === Title ====`) and zero-padding (e.g. `# ===Title===`) are accepted. Overflowing headers pass through unchanged, matching how dividers are handled.
 - `u` (undo) action in interactive mode (`-i`) that pops the most recent decision from a session-wide log and re-prompts at that position. Undo works across files: when undo lands in a previously-written file, the on-disk content is reverted lazily — either when the user re-walks through that file or at session end via the q-flush, which reconciles every file on disk with the final decision log so undone writes never persist. Decisions made before the undo are silently replayed on re-entry, so the user is only re-prompted at and beyond the rewind cursor. The `[u]ndo` label is hidden at the very first prompt of a session when there is nothing to pop.
 
 ### Fixed

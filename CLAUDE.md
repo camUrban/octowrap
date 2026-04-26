@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-octowrap is a Python CLI tool that rewraps Python `#` comments to a specified line length. It intelligently reformats comment blocks while preserving commented-out code, section dividers, and tool directives (type: ignore, noqa, fmt: off, pragma: no cover, etc.). List items are rewrapped with hanging indent aligned to the text after the marker (`list-wrap`, enabled by default). TODO/FIXME markers are detected and rewrapped with proper continuation indent (one space), with configurable patterns, case sensitivity, and multi-line collection. Overflowing inline comments (`code  # comment`) are extracted into standalone block comments above the code line and wrapped normally; tool directives are always preserved in place.
+octowrap is a Python CLI tool that rewraps Python `#` comments to a specified line length. It intelligently reformats comment blocks while preserving commented-out code, section dividers, section headers (e.g. `# === Title ===`), and tool directives (type: ignore, noqa, fmt: off, pragma: no cover, etc.). List items are rewrapped with hanging indent aligned to the text after the marker (`list-wrap`, enabled by default). TODO/FIXME markers are detected and rewrapped with proper continuation indent (one space), with configurable patterns, case sensitivity, and multi-line collection. Overflowing inline comments (`code  # comment`) are extracted into standalone block comments above the code line and wrapped normally; tool directives are always preserved in place.
 
 ## Commands
 
@@ -45,6 +45,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 7. **Preservation checks**: each comment is tested against heuristics:
    - `is_likely_code()`: two-pass detection — 21 regex patterns match commented-out Python code, then `_looks_like_prose()` rescues false positives where a keyword is followed by a determiner (the/this/that/these/those) or specific phrases like "return to" / "assert that"
    - `is_divider()`: repeated-character separator lines
+   - `is_section_header()`: lines like `# === Title ===` with the same delimiter character (`-`, `=`, `#`, `*`, `_`) on both sides, at least three per side, asymmetric counts allowed, padding optional. Preserved verbatim including overflow.
    - `is_list_item()` / `extract_list_marker()`: bullets, numbered items; when `list-wrap` is enabled (default), long list items are rewrapped with hanging indent
    - `is_tool_directive()`: tool directives (`type: ignore`, `noqa`, `fmt: off/on/skip`, `pragma: no cover`, `isort: skip`, `pylint: disable/enable`, `mypy:`, `pyright:`, `ruff: noqa`, `noinspection`, PEP 484 type comments)
    - `is_todo_marker()`: detects TODO/FIXME-style markers (configurable patterns, case-insensitive by default, no colon required)

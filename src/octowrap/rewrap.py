@@ -4,6 +4,7 @@ This script identifies contiguous blocks of # comments at the same indentation l
 rewraps them using textwrap. It preserves:
 - Commented out code (heuristic detection)
 - Section dividers (lines of repeated characters like # ---- or # ====)
+- Section headers (lines like # === Title === with matching delimiters on both sides)
 - Short inline comments (# after code on the same line, within line length)
 - Intentional short lines and blank comment lines
 - Lists and bullet points (rewrapped with hanging indent when list-wrap is enabled)
@@ -141,6 +142,26 @@ def is_divider(text: str) -> bool:
         char_counts[c] = char_counts.get(c, 0) + 1
     most_common_count = max(char_counts.values())
     return most_common_count >= len(stripped) * 0.7 and len(stripped) >= 4
+
+
+_SECTION_HEADER_RE = re.compile(r"^([-=#*_])\1{2,}\s*(.+?)\s*\1{3,}$")
+
+
+def is_section_header(text: str) -> bool:
+    """Check if a comment is a section header like # === Title ===.
+
+    Same delimiter character (one of ``- = # * _``) on both sides, at least
+    three of that character per side. Asymmetric counts are allowed and
+    padding around the title is optional. Title must contain a non-delimiter
+    glyph; otherwise the line is just a fancy divider already covered by
+    :func:`is_divider`.
+    """
+    match = _SECTION_HEADER_RE.match(text.strip())
+    if not match:
+        return False
+    delim = match.group(1)
+    title = match.group(2).strip()
+    return bool(title.strip(delim))
 
 
 def is_list_item(text: str) -> bool:
@@ -371,6 +392,8 @@ def should_preserve_line(text: str) -> bool:
     if is_likely_code(text):
         return True
     if is_divider(text):
+        return True
+    if is_section_header(text):
         return True
     return False
 

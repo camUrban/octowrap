@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
 [![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
 
-A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, and tool directives. List items are rewrapped with hanging indent. TODO/FIXME markers are intelligently rewrapped with continuation indentation. Overflowing inline comments are extracted into standalone block comments and wrapped normally.
+A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, section headers (e.g. `# === Title ===`), and tool directives. List items are rewrapped with hanging indent. TODO/FIXME markers are intelligently rewrapped with continuation indentation. Overflowing inline comments are extracted into standalone block comments and wrapped normally.
 
 ## Features
 
@@ -16,6 +16,7 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Heals erroneous spaces at bracket boundaries on rewrap (e.g. `( text)` -> `(text)`, `text )` -> `text)`)
 - Preserves commented-out Python code (detected via 21 heuristic patterns with a prose disqualifier to avoid false positives on natural English)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
+- Preserves section headers (`# === Title ===`, `# --- Title ---`, `# ### Title ###`, `# *** Title ***`, `# ___ Title ___`) — same delimiter character on both sides, three or more per side, asymmetric counts allowed
 - Rewraps list items (bullets, numbered, lettered) with hanging indent aligned to the text after the marker; collects continuation lines and handles nesting naturally. Disable with `list-wrap = false`.
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
 - Extracts overflowing inline comments (`code  # comment`) into standalone block comments above the code line when the line exceeds the line length, then wraps them normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline`.
