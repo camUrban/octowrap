@@ -5,6 +5,7 @@ import pytest
 
 # noinspection PyProtectedMember
 from octowrap.rewrap import (
+    Decision,
     _block_prompt_units,
     _relative_path,
     count_changed_blocks,
@@ -1128,3 +1129,116 @@ class TestInteractiveFilepath:
         out = capsys.readouterr().out
         expected = os.path.join("pkg", "mod.py")
         assert expected in out
+
+
+class TestDecisionRecording:
+    """Phase 2: every accepted prompt action is appended to _state['decisions']."""
+
+    def test_single_accept_records_one_decision(self, tmp_path, monkeypatch):
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        state = {"decisions": []}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        assert len(state["decisions"]) == 1
+        decision = state["decisions"][0]
+        assert isinstance(decision, Decision)
+        assert decision.action == "a"
+        assert len(decision.cursor) == 2  # paragraph cursor
+
+    def test_sequence_of_actions_recorded_in_order(self, tmp_path, monkeypatch):
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+            b"y = 2\n"
+            b"# Third block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        responses = iter(["a", "s", "e"])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        state = {"decisions": []}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a", "s", "e"]
+
+    def test_quit_is_not_recorded(self, tmp_path, monkeypatch):
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        state = {"decisions": []}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        assert state["decisions"] == []
+
+    def test_accept_all_records_one_decision_with_capital_A(
+        self, tmp_path, monkeypatch
+    ):
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "A")
+        state = {"decisions": []}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        # One keypress, one decision — accept-all is recorded once even though it
+        # applies to all subsequent paragraphs.
+        assert len(state["decisions"]) == 1
+        assert state["decisions"][0].action == "A"
+
+    def test_paragraph_cursor_has_two_elements(self, tmp_path, monkeypatch):
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        state = {"decisions": []}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        cursor = state["decisions"][0].cursor
+        assert len(cursor) == 2
+        assert all(isinstance(x, int) for x in cursor)
+
+    def test_inline_cursor_is_tagged(self, tmp_path, monkeypatch):
+        """Inline-extraction prompts produce a 3-tuple cursor with 'inline' tag."""
+        f = tmp_path / "t.py"
+        # An overflowing inline comment that triggers extraction.
+        long_code = (
+            "x = 1  # this is a very long inline comment that pushes the line "
+            "well past the eighty-eight character limit\n"
+        )
+        f.write_bytes(long_code.encode())
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        state = {"decisions": []}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        assert len(state["decisions"]) == 1
+        cursor = state["decisions"][0].cursor
+        assert len(cursor) == 3
+        assert cursor[1] == "inline"
+
+    def test_decision_filepath_matches_processed_file(self, tmp_path, monkeypatch):
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        state = {"decisions": []}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        # filepath stored on the Decision is whatever process_file passes to
+        # process_content (relative to CWD when possible).
+        assert state["decisions"][0].filepath
+        assert state["decisions"][0].filepath.endswith("t.py")
+
+    def test_no_recording_when_decisions_key_absent(self, tmp_path, monkeypatch):
+        """If _state lacks a 'decisions' key, recording is silently skipped."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        state = {}  # No 'decisions' key — must not crash, must not add one.
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        assert "decisions" not in state

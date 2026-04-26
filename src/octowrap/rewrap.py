@@ -1125,6 +1125,16 @@ def process_content(
                         if has_changes:
                             action = prompt_user()
 
+                            if (
+                                action != "q"
+                                and _state is not None
+                                and "decisions" in _state
+                            ):
+                                cursor = (block["start_idx"], "inline", line_idx)
+                                _state["decisions"].append(
+                                    Decision(filepath, cursor, action)
+                                )
+
                             if action == "A":
                                 accept_all = True
                                 new_lines.extend(replacement)
@@ -1295,6 +1305,10 @@ def process_content(
             )
 
             action = prompt_user()
+
+            if action != "q" and _state is not None and "decisions" in _state:
+                cursor = (block["start_idx"], unit["raw_start"])
+                _state["decisions"].append(Decision(filepath, cursor, action))
 
             if action == "A":
                 accept_all = True
