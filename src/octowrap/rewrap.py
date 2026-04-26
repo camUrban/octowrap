@@ -976,7 +976,7 @@ def prompt_user(can_undo: bool = True) -> str:
     """Prompt user for action on a block.
 
     Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 'f' (flag),
-    'u' (undo, only when *can_undo* is True), 's' (skip), or 'q' (quit).
+    's' (skip), 'u' (undo, only when *can_undo* is True), or 'q' (quit).
 
     When *can_undo* is False, ``[u]ndo`` is omitted from the rendered prompt
     and ``u`` keypresses are silently rejected (the prompt re-displays).
@@ -988,10 +988,10 @@ def prompt_user(can_undo: bool = True) -> str:
         f"accept [{colorize('A', 'green')}]ll",
         f"[{colorize('e', 'cyan')}]xclude",
         f"[{colorize('f', 'magenta')}]lag",
+        f"[{colorize('s', 'yellow')}]kip",
     ]
     if can_undo:
         parts.append(f"[{colorize('u', 'blue')}]ndo")
-    parts.append(f"[{colorize('s', 'yellow')}]kip")
     parts.append(f"[{colorize('q', 'red')}]uit")
     prompt = " / ".join(parts) + "? "
     while True:

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- `u` (undo) action in interactive mode (`-i`) that pops the most recent decision from a session-wide log and re-prompts at that position. Undo works across files: when undo lands in a previously-written file, the on-disk content is reverted lazily — either when the user re-walks through that file or at session end via the q-flush, which reconciles every file on disk with the final decision log so undone writes never persist. Decisions made before the undo are silently replayed on re-entry, so the user is only re-prompted at and beyond the rewind cursor. The `[u]ndo` label is hidden at the very first prompt of a session when there is nothing to pop.
+
 ### Fixed
 - Pressing the up arrow key in interactive mode no longer silently triggers "accept all remaining paragraphs". `_getch()` now consumes escape sequences (arrow keys, function keys, etc.) as a single logical event using a 50ms drain timeout that matches ncurses' `ESCDELAY` convention, so the trailing `A` of `\x1b[A` can no longer collide with the accept-all action. Bare ESC presses and other escape sequences (mouse, focus, window-resize) are likewise swallowed cleanly.
 - Pasting text into an interactive prompt no longer leaks subsequent characters into following prompts. After each accepted keypress, `_getch()` now drains any remaining buffered input (`termios.tcflush(TCIFLUSH)` on Unix, `msvcrt.kbhit()` loop on Windows). The first character of a paste is still consumed as that prompt's answer, but the rest is discarded instead of bleeding into later block prompts.

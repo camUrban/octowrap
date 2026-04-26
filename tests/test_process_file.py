@@ -1964,3 +1964,68 @@ class TestUndoAction:
         missing = tmp_path / "does-not-exist.py"
         with pytest.raises(FileNotFoundError):
             process_file(missing, max_line_length=88, interactive=True)
+
+    def test_within_block_undo_replays_exclude_correctly(self, tmp_path, monkeypatch):
+        """When `e` and later decisions all live inside a single multi-paragraph block,
+        an undo at a later paragraph must replay the earlier `e` (re-emitting its
+        pragmas) and the intervening decisions while still matching the rewind cursor.
+
+        This pins down the cursor-stability invariant: replay re-parses the original
+        content, so the in-memory pragma lines added by `e` never shift later units'
+        cursors. A future change that walked the mutated buffer instead would
+        silently break this case.
+        """
+        f = tmp_path / "t.py"
+        # Four wrappable prose paragraphs separated by blank `#` lines — all the same
+        # indent, so parse_comment_blocks produces a single block with four wrap units
+        # at raw_start 0, 3, 6, 9.
+        # fmt: off
+        f.write_bytes(
+            b"# This is paragraph 1 that was wrapped\n"
+            b"# at a short width.\n"
+            b"#\n"
+            b"# This is paragraph 2 that was wrapped\n"
+            b"# at a short width.\n"
+            b"#\n"
+            b"# This is paragraph 3 that was wrapped\n"
+            b"# at a short width.\n"
+            b"#\n"
+            b"# This is paragraph 4 that was wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        # p1: e (pragmas wrap p1 in memory). p2: a. p3: a. p4: u (pops p3=a, rewinds to
+        # p3). p3 re-prompt: s. p4 re-prompt: a.
+        responses = iter(["e", "a", "a", "u", "s", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state: dict = {}
+        _, content = process_file(f, max_line_length=88, interactive=True, _state=state)
+
+        # Decision log reflects the replay: p1=e and p2=a survived the undo; p3=s is the
+        # new decision; p4=a was made after the rewind.
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["e", "a", "s", "a"]
+        # The decisions still carry the original cursors (raw_starts 0, 3, 6, 9).
+        cursors = [d.cursor for d in state["decisions"]]
+        assert cursors == [(0, 0), (0, 3), (0, 6), (0, 9)]
+
+        # p1's pragmas were re-emitted on replay — the excluded paragraph is bracketed
+        # by exactly one off/on pair and its original two lines are preserved verbatim
+        # between them.
+        lines = content.splitlines()
+        off_idx = lines.index("# octowrap: off")
+        on_idx = lines.index("# octowrap: on")
+        assert lines[off_idx + 1 : on_idx] == [
+            "# This is paragraph 1 that was wrapped",
+            "# at a short width.",
+        ]
+        assert content.count("# octowrap: off") == 1
+        assert content.count("# octowrap: on") == 1
+        # p2's `a` was replayed → joined onto a single line.
+        assert "# This is paragraph 2 that was wrapped at a short width." in content
+        # p3 was re-decided as skip → still its original two-line form.
+        assert "# This is paragraph 3 that was wrapped\n# at a short width." in content
+        # p4's new `a` decision applied → single-line rewrap.
+        assert "# This is paragraph 4 that was wrapped at a short width." in content
