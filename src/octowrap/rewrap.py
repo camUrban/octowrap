@@ -21,6 +21,8 @@ import sys
 import tempfile
 import textwrap
 import tokenize
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from octowrap.config import ConfigError, find_config_file, load_config
@@ -51,6 +53,22 @@ DEFAULT_TODO_PATTERNS: list[str] = ["todo", "fixme"]
 DEFAULT_TODO_CASE_SENSITIVE: bool = False
 DEFAULT_TODO_MULTILINE: bool = True
 DEFAULT_LIST_WRAP: bool = True
+
+
+@dataclass
+class Decision:
+    """One recorded interactive decision in a session-wide log.
+
+    The cursor identifies a prompt position deterministically against the
+    *original* file content, so it survives `e`/`f` mutations to the in-memory
+    buffer during replay. Paragraph cursors are
+    ``(block_start_idx, unit_raw_start)``; inline-extraction cursors are
+    ``(block_start_idx, "inline", line_idx)``.
+    """
+
+    filepath: str
+    cursor: tuple
+    action: str
 
 
 def is_excluded(path: Path, exclude_patterns: list[str]) -> bool:
@@ -1341,6 +1359,96 @@ def _relative_path(filepath: Path) -> Path:
         return filepath
 
 
+def _atomic_write(filepath: Path, new_content: str) -> None:
+    """Atomically replace *filepath* with *new_content*, preserving file mode."""
+    original_mode = stat.S_IMODE(os.stat(filepath).st_mode)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
+    try:
+        with open(tmp_fd, "w", encoding="utf-8", newline="") as f:
+            f.write(new_content)
+        os.chmod(tmp_path, original_mode)
+        os.replace(tmp_path, filepath)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _drive_file(
+    filepath: Path,
+    max_line_length: int = 88,
+    dry_run: bool = False,
+    interactive: bool = False,
+    _state: dict | None = None,
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
+    inline: bool = True,
+    list_wrap: bool = True,
+    changed_lines: set[int] | None = None,
+) -> tuple[bool, str]:
+    """Read *filepath* and run ``process_content``; no file writes.
+
+    Pure read + transform; the caller decides whether to persist.
+    """
+    with open(filepath, encoding="utf-8", newline="") as f:
+        content = f.read()
+
+    return process_content(
+        content,
+        max_line_length,
+        interactive=interactive and not dry_run,
+        _state=_state,
+        filepath=str(_relative_path(filepath)),
+        todo_patterns=todo_patterns,
+        todo_case_sensitive=todo_case_sensitive,
+        todo_multiline=todo_multiline,
+        inline=inline,
+        list_wrap=list_wrap,
+        changed_lines=changed_lines,
+    )
+
+
+def _run_session(
+    filepaths: list[Path],
+    _state: dict,
+    *,
+    max_line_length: int = 88,
+    dry_run: bool = False,
+    interactive: bool = False,
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
+    inline: bool = True,
+    list_wrap: bool = True,
+    changed_lines_for: Callable[[Path], set[int] | None] | None = None,
+) -> None:
+    """Drive a sequence of files through the interactive/non-interactive loop.
+
+    Skeleton for the eventual undo-aware session driver. For now it routes every file
+    through the existing single-file path so behavior matches the pre-refactor flow
+    exactly. Later phases will add replay, rewind, and lazy re-write here.
+    """
+    for fp in filepaths:
+        process_file(
+            fp,
+            max_line_length,
+            dry_run=dry_run,
+            interactive=interactive,
+            _state=_state,
+            todo_patterns=todo_patterns,
+            todo_case_sensitive=todo_case_sensitive,
+            todo_multiline=todo_multiline,
+            inline=inline,
+            list_wrap=list_wrap,
+            changed_lines=changed_lines_for(fp) if changed_lines_for else None,
+        )
+        if _state.get("quit"):
+            break
+
+
 def process_file(
     filepath: Path,
     max_line_length: int = 88,
@@ -1358,15 +1466,12 @@ def process_file(
 
     Returns (changed, new_content).
     """
-    with open(filepath, encoding="utf-8", newline="") as f:
-        content = f.read()
-
-    changed, new_content = process_content(
-        content,
+    changed, new_content = _drive_file(
+        filepath,
         max_line_length,
-        interactive=interactive and not dry_run,
+        dry_run=dry_run,
+        interactive=interactive,
         _state=_state,
-        filepath=str(_relative_path(filepath)),
         todo_patterns=todo_patterns,
         todo_case_sensitive=todo_case_sensitive,
         todo_multiline=todo_multiline,
@@ -1376,19 +1481,7 @@ def process_file(
     )
 
     if changed and not dry_run:
-        original_mode = stat.S_IMODE(os.stat(filepath).st_mode)
-        tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
-        try:
-            with open(tmp_fd, "w", encoding="utf-8", newline="") as f:
-                f.write(new_content)
-            os.chmod(tmp_path, original_mode)
-            os.replace(tmp_path, filepath)
-        except BaseException:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-            raise
+        _atomic_write(filepath, new_content)
 
     return changed, new_content
 
@@ -1681,7 +1774,13 @@ def main():
 
     changed_count = 0
     error_count = 0
-    interactive_state: dict = {}
+    interactive_state: dict = {
+        "decisions": [],
+        "originals": {},
+        "last_written": {},
+        "dirty": set(),
+        "rewind_target": None,
+    }
 
     # Pre-scan to count total changed blocks for interactive progress indicator.
     if args.interactive and not args.dry_run:
