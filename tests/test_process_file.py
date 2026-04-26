@@ -1558,3 +1558,409 @@ class TestUndoAction:
         assert a.read_bytes() == WRAPPABLE_CONTENT
         # B was never written.
         assert b.read_bytes() == WRAPPABLE_CONTENT
+
+    def test_cross_file_undo_re_walks_to_finish(self, tmp_path, monkeypatch):
+        """Cross-file undo where the user walks back to completion: A is re-written with
+        the new decision; B is written exactly once at the end."""
+        import octowrap.rewrap as mod
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        a.write_bytes(WRAPPABLE_CONTENT)
+        b.write_bytes(WRAPPABLE_CONTENT)
+
+        write_log: list[str] = []
+        real_atomic = mod._atomic_write
+
+        def tracking_write(filepath, new_content):
+            write_log.append(filepath.name)
+            real_atomic(filepath, new_content)
+
+        monkeypatch.setattr("octowrap.rewrap._atomic_write", tracking_write)
+
+        # A.p1: a (A written rewrapped). B.p1: u (pops A's a, rewinds to A). A
+        # re-prompt: s (new decision, A re-written as original). B re-prompt: a (B
+        # written once).
+        responses = iter(["a", "u", "s", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+
+        # Final decision log: A=s, B=a (in order encountered post-rewind).
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["s", "a"]
+
+        rewrapped = (
+            b"# This is a comment that was wrapped at a short width previously.\n"
+            b"x = 1\n"
+        )
+        # A finished as 'skip' → original on disk. B finished as 'accept' → rewrapped.
+        assert a.read_bytes() == WRAPPABLE_CONTENT
+        assert b.read_bytes() == rewrapped
+        # A was atomic-written twice (once for the initial 'a', once to revert via 's');
+        # B was atomic-written exactly once.
+        assert write_log == [a.name, a.name, b.name]
+
+    def test_lazy_rewrite_on_cross_file_undo(self, tmp_path, monkeypatch):
+        """After a cross-file undo, the previously-written file's on-disk content keeps
+        its first decision until the user walks back through it.
+
+        The re-write only happens once that file's loop completes a second time.
+        """
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        a.write_bytes(WRAPPABLE_CONTENT)
+        b.write_bytes(WRAPPABLE_CONTENT)
+
+        a_disk_at_each_prompt: list[bytes] = []
+        responses = iter(["a", "u", "s", "a"])
+
+        def tracking_prompt(*_, **__):
+            a_disk_at_each_prompt.append(a.read_bytes())
+            return next(responses)
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", tracking_prompt)
+        state = _init_session_state(None)
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+
+        rewrapped = (
+            b"# This is a comment that was wrapped at a short width previously.\n"
+            b"x = 1\n"
+        )
+        # A not yet written before its first prompt.
+        assert a_disk_at_each_prompt[0] == WRAPPABLE_CONTENT
+        # By B's first prompt, A's loop has completed → atomic-write happened.
+        assert a_disk_at_each_prompt[1] == rewrapped
+        # Lazy: undo is in-memory only; A on disk is unchanged at the rewind step.
+        assert a_disk_at_each_prompt[2] == rewrapped
+        # By B's re-prompt, A's loop has since re-completed with 's' → reverted.
+        assert a_disk_at_each_prompt[3] == WRAPPABLE_CONTENT
+
+    def test_q_flush_full_revert_of_two_written_files(self, tmp_path, monkeypatch):
+        """Two files atomic-written, then both reverted via undo + undo + quit.
+
+        The third file in the list provides the prompt position for the first undo.
+        """
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        c = tmp_path / "c.py"
+        a.write_bytes(WRAPPABLE_CONTENT)
+        b.write_bytes(WRAPPABLE_CONTENT)
+        c.write_bytes(WRAPPABLE_CONTENT)
+        # A.p1: a (A written). B.p1: a (B written). C.p1: u (pops B → B dirty). B
+        # re-prompt: u (pops A → A dirty). A re-prompt: q.
+        responses = iter(["a", "a", "u", "u", "q"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        list(
+            _run_session(
+                [a, b, c],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+        # Decision log empty: every action was undone or was the quit itself.
+        assert state["decisions"] == []
+        # Both written files reverted to their originals; the third file untouched.
+        assert a.read_bytes() == WRAPPABLE_CONTENT
+        assert b.read_bytes() == WRAPPABLE_CONTENT
+        assert c.read_bytes() == WRAPPABLE_CONTENT
+
+    def test_q_flush_partial_state_after_undo(self, tmp_path, monkeypatch):
+        """Single file with four paragraphs, sequence ``a a a u q``.
+
+        The first two paragraphs end up rewrapped on disk; paragraphs three and four
+        stay original.
+        """
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+            b"y = 2\n"
+            b"# Third block that was also wrapped\n"
+            b"# at a short width.\n"
+            b"z = 3\n"
+            b"# Fourth block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+        # fmt: on
+        responses = iter(["a", "a", "a", "u", "q"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state: dict = {}
+        _, content = process_file(f, max_line_length=88, interactive=True, _state=state)
+        # u popped the third 'a'; q was not recorded.
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a", "a"]
+        # Paragraphs 1 and 2 rewrapped.
+        assert "# First block that was wrapped at a short width." in content
+        assert "# Second block that was also wrapped at a short width." in content
+        # Paragraphs 3 and 4 untouched (stay in their original two-line form).
+        assert "# Third block that was also wrapped\n# at a short width.\n" in content
+        assert "# Fourth block that was also wrapped\n# at a short width.\n" in content
+
+    def test_undo_with_diff_only_filtering(self, tmp_path, monkeypatch):
+        """When ``changed_lines`` filters out a paragraph, undo cursors for the
+        unfiltered paragraphs still match correctly on replay."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"# First block that was wrapped\n"           # 0
+            b"# at a short width.\n"                      # 1
+            b"x = 1\n"                                    # 2
+            b"# Second block that was also wrapped\n"     # 3
+            b"# at a short width.\n"                      # 4
+            b"y = 2\n"                                    # 5
+            b"# Third block that was also wrapped\n"      # 6
+            b"# at a short width.\n"                      # 7
+        )
+        # fmt: on
+        # Only blocks 1 and 3 overlap the changed-line set; block 2 is filtered out.
+        changed_lines = {0, 1, 6, 7}
+        # Block 1: a. Block 3: u (pops block 1's a, rewinds to block 1). Block 1
+        # re-prompt: s. Block 3 re-prompt: a.
+        responses = iter(["a", "u", "s", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state: dict = {}
+        _, content = process_file(
+            f,
+            max_line_length=88,
+            interactive=True,
+            _state=state,
+            changed_lines=changed_lines,
+        )
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["s", "a"]
+        # Block 1 skipped → original preserved.
+        assert "# First block that was wrapped\n# at a short width.\n" in content
+        # Block 2 filtered out → untouched.
+        assert "# Second block that was also wrapped\n# at a short width.\n" in content
+        # Block 3 accepted → rewrapped to a single line.
+        assert "# Third block that was also wrapped at a short width." in content
+
+    def test_undo_of_inline_extraction(self, tmp_path, monkeypatch):
+        """An overflowing inline-comment prompt is undoable like a paragraph prompt; the
+        recorded cursor is the inline 3-tuple (block_start_idx, "inline", line_idx)."""
+        f = tmp_path / "t.py"
+        # Two inline overflows give us the second prompt position needed to fire 'u'.
+        f.write_bytes(
+            b"x = 1  # this inline comment is way too long and definitely exceeds the"
+            b" eighty-eight character line length limit set\n"
+            b"y = 2  # another long inline comment that also pushes its line well past"
+            b" the eighty-eight character limit easily\n"
+        )
+        # Inline 1: a. Inline 2: u (pops inline 1=a, rewinds). Inline 1 re-prompt: s.
+        # Inline 2 re-prompt: a.
+        responses = iter(["a", "u", "s", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state: dict = {}
+        _, content = process_file(f, max_line_length=88, interactive=True, _state=state)
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["s", "a"]
+        # Both decisions carry inline cursors.
+        assert all(
+            len(d.cursor) == 3 and d.cursor[1] == "inline" for d in state["decisions"]
+        )
+        lines = content.splitlines()
+        # Line 1 was skipped — its inline overflow stays in place on the same line.
+        x_line = next(ln for ln in lines if ln.startswith("x = 1"))
+        assert "this inline comment" in x_line
+        # Line 2 was accepted — the inline was extracted to a comment block above and
+        # the code line itself no longer carries the trailing comment.
+        y_line = next(ln for ln in lines if ln.startswith("y = 2"))
+        assert "#" not in y_line
+        assert "# another long inline comment" in content
+
+    def test_progress_counter_rolls_back_after_undo(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Undo decrements the [X/Y] progress indicator: ``block_total`` is unchanged;
+        ``block_current`` is recomputed from ``len(decisions)`` on each re-entry."""
+        f = tmp_path / "t.py"
+        self._make_three_paragraph_file(f)
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        responses = iter(["a", "a", "u", "s", "s"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        state["block_total"] = 3
+        state["block_current"] = 0
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+
+        # block_total is never decremented by undo.
+        assert state["block_total"] == 3
+        # Final decisions [a, s, s] → block_current ended at 3 (last prompt's
+        # increment).
+        assert state["block_current"] == 3
+
+        out = capsys.readouterr().out
+        # First pass shows [1/3], [2/3], [3/3]. After undo, p1 replays silently (no
+        # progress increment), so the second pass shows [2/3] and [3/3] only.
+        assert out.count("[1/3]") == 1
+        assert out.count("[2/3]") == 2
+        assert out.count("[3/3]") == 2
+
+    def test_mixed_paragraph_and_inline_cursors(self, tmp_path, monkeypatch):
+        """A file with both inline and paragraph prompts disambiguates cursors via the
+        ``"inline"`` tag, so undoing a paragraph decision after an inline one pops the
+        right entry from the log."""
+        f = tmp_path / "t.py"
+        # fmt: off
+        f.write_bytes(
+            b"x = 1  # this inline comment is way too long and definitely exceeds the"
+            b" eighty-eight character line length limit set\n"
+            b"# This first comment block was wrapped\n"
+            b"# at a short width previously.\n"
+            b"y = 2\n"
+            b"# This second comment block was also wrapped\n"
+            b"# at a short width previously.\n"
+        )
+        # fmt: on
+        # Inline: a. Paragraph 1: a. Paragraph 2: u (pops p1=a, rewinds to p1).
+        # Paragraph 1 re-prompt: s. Paragraph 2 re-prompt: a.
+        responses = iter(["a", "a", "u", "s", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state: dict = {}
+        _, content = process_file(f, max_line_length=88, interactive=True, _state=state)
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a", "s", "a"]
+        # The inline decision (first) keeps its 3-tuple "inline" cursor; the two
+        # paragraph decisions are 2-tuples without that tag.
+        assert len(state["decisions"][0].cursor) == 3
+        assert state["decisions"][0].cursor[1] == "inline"
+        assert len(state["decisions"][1].cursor) == 2
+        assert len(state["decisions"][2].cursor) == 2
+        # Inline accepted → comment lifted above x = 1; paragraph 1 skipped → original
+        # preserved; paragraph 2 accepted → rewrapped to a single line.
+        assert (
+            "# This first comment block was wrapped\n# at a short width previously.\n"
+            in content
+        )
+        assert (
+            "# This second comment block was also wrapped at a short width previously."
+            in content
+        )
+
+    def test_cross_file_inline_undo_marks_prior_file_dirty(self, tmp_path, monkeypatch):
+        """Undoing an inline-extraction decision after the prior file was atomic-written
+        marks that file dirty so the q-flush reverts it to the original."""
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        inline_overflow = (
+            b"x = 1  # this inline comment is way too long and definitely exceeds the"
+            b" eighty-eight character line length limit set\n"
+        )
+        a.write_bytes(inline_overflow)
+        b.write_bytes(inline_overflow)
+        # A.inline: a (A written). B.inline: u (pops A's inline decision; A is in
+        # last_written, so A is marked dirty). A re-prompt: q.
+        responses = iter(["a", "u", "q"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+        # A reverted to original via direct re-write on the post-rewind quit; B was
+        # never written.
+        assert a.read_bytes() == inline_overflow
+        assert b.read_bytes() == inline_overflow
+        assert state["decisions"] == []
+
+    def test_flush_replays_inline_decision_in_replay_only_mode(
+        self, tmp_path, monkeypatch
+    ):
+        """When a file with an inline-extraction decision is undone and never re-walked
+        (the user quits in a different file), the q-flush replays its loop in
+        ``replay_only`` mode — the un-decided inline cursor defaults to skip and the
+        original line is preserved on disk."""
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        c = tmp_path / "c.py"
+        inline_overflow = (
+            b"x = 1  # this inline comment is way too long and definitely exceeds the"
+            b" eighty-eight character line length limit set\n"
+        )
+        a.write_bytes(inline_overflow)
+        b.write_bytes(inline_overflow)
+        c.write_bytes(inline_overflow)
+        # A: a (written). B: a (written). C: u (pops B → B dirty). B re-prompt: u (pops
+        # A → A dirty). A re-prompt: q.
+        responses = iter(["a", "a", "u", "u", "q"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        list(
+            _run_session(
+                [a, b, c],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+        # A reverted via direct re-write on quit; B reverted via the flush's replay-only
+        # walk (which routes the un-decided inline cursor through the skip branch); C
+        # never touched.
+        assert a.read_bytes() == inline_overflow
+        assert b.read_bytes() == inline_overflow
+        assert c.read_bytes() == inline_overflow
+        assert state["decisions"] == []
+
+    def test_process_file_interactive_propagates_session_errors(self, tmp_path):
+        """Errors yielded by ``_run_session`` (e.g. a missing file) propagate out of
+        ``process_file`` when the interactive single-file path is in use."""
+        missing = tmp_path / "does-not-exist.py"
+        with pytest.raises(FileNotFoundError):
+            process_file(missing, max_line_length=88, interactive=True)

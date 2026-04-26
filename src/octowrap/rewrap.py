@@ -1576,7 +1576,9 @@ def _flush_dirty_at_quit(
     if dry_run:
         return
     for key in list(_state["dirty"]):
-        if key not in _state["originals"]:
+        if key not in _state["originals"]:  # pragma: no cover
+            # Defensive: dirty membership is only ever set via undo, which always pops a
+            # Decision whose filepath was already populated in originals upstream.
             _state["dirty"].discard(key)
             continue
         original = _state["originals"][key]
