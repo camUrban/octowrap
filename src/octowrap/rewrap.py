@@ -894,16 +894,35 @@ def show_block_diff(
 
 
 def _getch() -> str:
-    """Read a single character without waiting for Enter.
+    """Read one logical keypress without waiting for Enter.
 
-    Uses platform specific APIs (msvcrt on Windows, termios/tty on Unix), imported
-    locally to avoid cross-platform resolution issues.
+    Multi-byte input (arrow keys, function keys, Windows special keys, partial
+    escape sequences left in the buffer by a paste) is consumed in full and
+    reported as the empty string.  This prevents the trailing byte of an
+    escape sequence (notably the ``A`` in ``\\x1b[A`` for up arrow) from being
+    misread as a one-letter command, and prevents a paste's tail bytes from
+    bleeding into the next prompt.
+
+    Uses platform specific APIs (msvcrt on Windows, termios/tty/select on
+    Unix), imported locally to avoid cross-platform resolution issues.
     """
     if sys.platform == "win32":
         import msvcrt
 
-        return msvcrt.getwch()
+        ch = msvcrt.getwch()
+        # \x00 and \xe0 are scancode prefixes for arrows, F-keys, etc.; the next read
+        # returns the actual scancode, which we discard.
+        if ch in ("\x00", "\xe0"):
+            msvcrt.getwch()
+            ch = ""
+        # Drain any further keys queued behind this one (paste tail, type-ahead).
+        while msvcrt.kbhit():
+            extra = msvcrt.getwch()
+            if extra in ("\x00", "\xe0"):
+                msvcrt.getwch()
+        return ch
 
+    import select
     import termios
     import tty
 
@@ -911,7 +930,24 @@ def _getch() -> str:
     old = termios.tcgetattr(fd)
     try:
         tty.setcbreak(fd)
-        return sys.stdin.read(1)
+        try:
+            ch = sys.stdin.read(1)
+        except UnicodeDecodeError:
+            ch = ""
+        if ch == "\x1b":
+            # Drain the rest of the escape sequence.  A small timeout (rather than a
+            # non-blocking peek) catches tails that arrive a few milliseconds late over
+            # slow terminals or SSH; matches ncurses' ESCDELAY convention.
+            while select.select([fd], [], [], 0.05)[0]:
+                try:
+                    sys.stdin.read(1)
+                except UnicodeDecodeError:
+                    pass
+            ch = ""
+        # Drain anything else queued behind this keypress so a paste's trailing bytes
+        # don't bleed into the next prompt.
+        termios.tcflush(fd, termios.TCIFLUSH)
+        return ch
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
@@ -936,13 +972,17 @@ def prompt_user() -> str:
             sys.stdout.write(prompt)
             sys.stdout.flush()
             ch = _getch()
-            sys.stdout.write(ch + "\n")
-            sys.stdout.flush()
             if ch == "A":
+                sys.stdout.write("A\n")
+                sys.stdout.flush()
                 return "A"
-            ch = ch.lower()
-            if ch in ("a", "e", "f", "s", "q"):
-                return ch
+            lowered = ch.lower()
+            if lowered in ("a", "e", "f", "s", "q"):
+                sys.stdout.write(lowered + "\n")
+                sys.stdout.flush()
+                return lowered
+            sys.stdout.write("\n")
+            sys.stdout.flush()
         except (EOFError, KeyboardInterrupt):
             print()
             return "q"
@@ -1576,6 +1616,13 @@ def main():
             raise SystemExit(1 if changed else 0)
 
         raise SystemExit(0)
+
+    if args.interactive and not sys.stdin.isatty():
+        print(
+            "octowrap: error: --interactive requires a TTY",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
     files_to_process = []
     for path in args.paths:
