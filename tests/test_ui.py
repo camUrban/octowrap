@@ -193,9 +193,36 @@ class TestPromptUser:
         monkeypatch.setattr(mod, "colorize", spy)
         prompt_user()
 
-        colors = {"red", "green", "yellow", "cyan", "magenta", "bold", "reset"}
+        colors = {"red", "green", "yellow", "blue", "cyan", "magenta", "bold", "reset"}
         for color in captured:
             assert color in colors, f"prompt_user uses unknown color {color!r}"
+
+    def test_undo_accepted_when_can_undo(self, monkeypatch):
+        """Pressing 'u' returns 'u' when can_undo=True."""
+        monkeypatch.setattr(mod, "_getch", lambda: "u")
+        assert prompt_user(can_undo=True) == "u"
+
+    def test_undo_rejected_when_cannot_undo(self, monkeypatch):
+        """Pressing 'u' when can_undo=False is silently ignored — the prompt loops."""
+        responses = iter(["u", "u", "a"])
+        monkeypatch.setattr(mod, "_getch", lambda: next(responses))
+        assert prompt_user(can_undo=False) == "a"
+
+    def test_undo_label_shown_when_can_undo(self, monkeypatch, capsys):
+        """The [u]ndo label appears in the rendered prompt only when can_undo=True."""
+        monkeypatch.setattr(mod, "_USE_COLOR", False)
+        monkeypatch.setattr(mod, "_getch", lambda: "a")
+        prompt_user(can_undo=True)
+        out = capsys.readouterr().out
+        assert "[u]ndo" in out
+
+    def test_undo_label_hidden_when_cannot_undo(self, monkeypatch, capsys):
+        """The [u]ndo label is omitted when can_undo=False."""
+        monkeypatch.setattr(mod, "_USE_COLOR", False)
+        monkeypatch.setattr(mod, "_getch", lambda: "a")
+        prompt_user(can_undo=False)
+        out = capsys.readouterr().out
+        assert "[u]ndo" not in out
 
 
 class TestGetchEscapeSequences:

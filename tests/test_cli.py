@@ -35,7 +35,7 @@ class TestMain:
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         assert "1 file(s) reformatted." in out
@@ -115,7 +115,7 @@ class TestMain:
         a.write_bytes(WRAPPABLE_CONTENT)
         b = tmp_path / "b.py"
         b.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "q")
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(a), str(b)])
         main()
         out = capsys.readouterr().out
@@ -514,7 +514,7 @@ class TestColorFlags:
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", "--color", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "s")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "s")
         main()
         assert mod._USE_COLOR is True
 
@@ -793,7 +793,7 @@ class TestInteractiveProgress:
         f = tmp_path / "a.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         assert "[1/1]" in out
@@ -805,7 +805,7 @@ class TestInteractiveProgress:
         b = tmp_path / "b.py"
         b.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(a), str(b)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         assert "[1/2]" in out
@@ -833,7 +833,7 @@ class TestInteractiveProgress:
         f = tmp_path / "a.py"
         f.write_bytes(content)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         assert "[1/2]" in out
@@ -851,7 +851,7 @@ class TestInteractiveProgress:
         f = tmp_path / "a.py"
         f.write_bytes(content)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         # Only one block changes, so total should be 1
@@ -870,7 +870,7 @@ class TestInteractiveProgress:
         f = tmp_path / "a.py"
         f.write_bytes(content)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         # Two changed paragraphs in one block → [1/2] and [2/2].
@@ -889,7 +889,7 @@ class TestInteractiveProgress:
         f = tmp_path / "a.py"
         f.write_bytes(content)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         # Only the prose paragraph changes; the directive is a silent no-op.
@@ -908,7 +908,7 @@ class TestInteractiveProgress:
         f = tmp_path / "a.py"
         f.write_bytes(content)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         # The block is disabled so nothing should be prompted
@@ -931,7 +931,7 @@ class TestInteractiveProgress:
         f = tmp_path / "a.py"
         f.write_bytes(content)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         assert "[1/1]" in out
@@ -956,7 +956,7 @@ class TestInteractiveProgress:
 
         monkeypatch.setattr(mod, "count_changed_blocks", failing_count)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(bad), str(good)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         # Only good.py was counted in pre-scan, so total is 1
@@ -1017,7 +1017,7 @@ class TestNoInlineFlag:
         f = tmp_path / "a.py"
         f.write_bytes(self.INLINE_CONTENT)
         monkeypatch.setattr("sys.argv", ["octowrap", "-i", str(f)])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
         assert "[1/1]" in out
@@ -1202,7 +1202,7 @@ class TestDiffOnly:
         self._mock_diff(monkeypatch, tmp_path, {rel: {3, 4}})
         call_count = 0
 
-        def counting_prompt():
+        def counting_prompt(*_, **__):
             nonlocal call_count
             call_count += 1
             return "a"

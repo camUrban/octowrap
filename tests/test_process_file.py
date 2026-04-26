@@ -7,6 +7,7 @@ import pytest
 from octowrap.rewrap import (
     Decision,
     _block_prompt_units,
+    _init_session_state,
     _relative_path,
     count_changed_blocks,
     process_content,
@@ -167,7 +168,7 @@ class TestProcessFileInteractive:
         """When the user accepts, the rewrapped content is used."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "wrapped at a short width previously." in content
@@ -176,7 +177,7 @@ class TestProcessFileInteractive:
         """When the user skips, the original block is preserved."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "s")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "s")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert not changed
 
@@ -190,7 +191,7 @@ class TestProcessFileInteractive:
             b"# Second block that was also wrapped\n"
             b"# at a short width.\n"
         )
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "q")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         # Both blocks should be unchanged since user quit on the first
         assert not changed
@@ -209,7 +210,7 @@ class TestProcessFileInteractive:
             b"# at a short width.\n"
         )
         # fmt: on
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "q")
         monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
         process_file(f, max_line_length=88, interactive=True)
         out = capsys.readouterr().out
@@ -229,7 +230,7 @@ class TestProcessFileInteractive:
             b"# at a short width.\n"
         )
         # fmt: on
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "A")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "A")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "# First block that was wrapped at a short width." in content
@@ -249,7 +250,7 @@ class TestProcessFileInteractive:
         # fmt: on
         call_count = 0
 
-        def counting_prompt():
+        def counting_prompt(*_, **__):
             nonlocal call_count
             call_count += 1
             return "A"
@@ -264,7 +265,7 @@ class TestProcessFileInteractive:
         f.write_bytes(b"# Short.\nx = 1\n")
         called = False
 
-        def should_not_be_called():
+        def should_not_be_called(*_, **__):
             nonlocal called
             called = True
             return "a"
@@ -277,7 +278,7 @@ class TestProcessFileInteractive:
         """Excluding a block wraps it with octowrap: off/on pragmas."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "e")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "# octowrap: off" in content
@@ -288,7 +289,7 @@ class TestProcessFileInteractive:
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         original_line_count = WRAPPABLE_CONTENT.count(b"\n")
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "e")
         _, content = process_file(f, max_line_length=88, interactive=True)
         assert content.count("\n") == original_line_count + 2
 
@@ -302,7 +303,7 @@ class TestProcessFileInteractive:
             b"    # at a short width previously.\n"
         )
         # fmt: on
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "e")
         _, content = process_file(f, max_line_length=88, interactive=True)
         assert "    # octowrap: off" in content
         assert "    # octowrap: on" in content
@@ -311,7 +312,7 @@ class TestProcessFileInteractive:
         """Re-running on an excluded file produces no changes (idempotent)."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "e")
         process_file(f, max_line_length=88, interactive=True)
         # Second run: no interactive prompt needed, nothing should change
         changed, _ = process_file(f, max_line_length=88)
@@ -330,7 +331,9 @@ class TestProcessFileInteractive:
         )
         # fmt: on
         responses = iter(["e", "a"])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         # First block should be wrapped with pragmas, original text preserved
@@ -344,7 +347,7 @@ class TestProcessFileInteractive:
         """Flagging a block inserts a FIXME comment and preserves original text."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "# FIXME: Manually fix the below comment" in content
@@ -362,7 +365,7 @@ class TestProcessFileInteractive:
             b"    # at a short width previously.\n"
         )
         # fmt: on
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         _, content = process_file(f, max_line_length=88, interactive=True)
         assert "    # FIXME: Manually fix the below comment" in content
 
@@ -370,7 +373,7 @@ class TestProcessFileInteractive:
         """A short line length forces the FIXME comment to wrap."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         _, content = process_file(f, max_line_length=40, interactive=True)
         fixme_lines = [
             ln for ln in content.splitlines() if "FIXME" in ln or ln.startswith("#  ")
@@ -395,7 +398,7 @@ class TestProcessFileInteractive:
             b"and keeps going on well past any sane line length limit.\n"
             b"# Second line of the same paragraph to force a wrap operation.\n"
         )
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         _, content = process_file(f, max_line_length=width, interactive=True)
         flag_lines = [
             ln
@@ -421,7 +424,9 @@ class TestProcessFileInteractive:
         )
         # fmt: on
         responses = iter(["f", "a"])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         # First block should have FIXME above it, original text preserved
@@ -435,7 +440,7 @@ class TestProcessFileInteractive:
         pragmas."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         _, content = process_file(f, max_line_length=88, interactive=True)
         lines = content.splitlines()
         off_idx = lines.index("# octowrap: off")
@@ -450,7 +455,7 @@ class TestProcessFileInteractive:
         """Re-running on a flagged file leaves the pragma-protected region untouched."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         process_file(f, max_line_length=88, interactive=True)
         first_pass = f.read_bytes()
         # Second run in batch mode — nothing should change because the pragmas disable
@@ -617,7 +622,7 @@ class TestInteractivePerParagraph:
         f.write_bytes(self._mixed_block_content())
         call_count = 0
 
-        def counting_prompt() -> str:
+        def counting_prompt(*_, **__) -> str:
             nonlocal call_count
             call_count += 1
             return "a"
@@ -639,7 +644,7 @@ class TestInteractivePerParagraph:
         # fmt: on
         call_count = 0
 
-        def counting_prompt() -> str:
+        def counting_prompt(*_, **__) -> str:
             nonlocal call_count
             call_count += 1
             return "a"
@@ -653,7 +658,9 @@ class TestInteractivePerParagraph:
         f = tmp_path / "t.py"
         f.write_bytes(self._mixed_block_content())
         responses = iter(["s", "a"])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
         _, content = process_file(f, max_line_length=88, interactive=True)
         # The prose paragraph stays split across two lines (skipped).
         assert (
@@ -672,7 +679,9 @@ class TestInteractivePerParagraph:
         f = tmp_path / "t.py"
         f.write_bytes(self._mixed_block_content())
         responses = iter(["a", "e"])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
         _, content = process_file(f, max_line_length=88, interactive=True)
         lines = content.splitlines()
         off_idx = lines.index("# octowrap: off")
@@ -864,7 +873,7 @@ class TestPragma:
         )
         called = False
 
-        def should_not_be_called():
+        def should_not_be_called(*_, **__):
             nonlocal called
             called = True
             return "a"
@@ -1125,7 +1134,7 @@ class TestInteractiveFilepath:
         sub.mkdir()
         f = sub / "mod.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
         process_file(f, max_line_length=88, interactive=True)
         out = capsys.readouterr().out
@@ -1139,7 +1148,7 @@ class TestDecisionRecording:
     def test_single_accept_records_one_decision(self, tmp_path, monkeypatch):
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
         assert len(state["decisions"]) == 1
@@ -1163,7 +1172,9 @@ class TestDecisionRecording:
         )
         # fmt: on
         responses = iter(["a", "s", "e"])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
         actions = [d.action for d in state["decisions"]]
@@ -1172,7 +1183,7 @@ class TestDecisionRecording:
     def test_quit_is_not_recorded(self, tmp_path, monkeypatch):
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "q")
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
         assert state["decisions"] == []
@@ -1190,7 +1201,7 @@ class TestDecisionRecording:
             b"# at a short width.\n"
         )
         # fmt: on
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "A")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "A")
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
         # One keypress, one decision — accept-all is recorded once even though it
@@ -1201,7 +1212,7 @@ class TestDecisionRecording:
     def test_paragraph_cursor_has_two_elements(self, tmp_path, monkeypatch):
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
         cursor = state["decisions"][0].cursor
@@ -1217,7 +1228,7 @@ class TestDecisionRecording:
             "well past the eighty-eight character limit\n"
         )
         f.write_bytes(long_code.encode())
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
         assert len(state["decisions"]) == 1
@@ -1228,7 +1239,7 @@ class TestDecisionRecording:
     def test_decision_filepath_matches_processed_file(self, tmp_path, monkeypatch):
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
         # filepath stored on the Decision is whatever process_file passes to
@@ -1243,7 +1254,7 @@ class TestDecisionRecording:
         driver key so recording and replay both work."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         state = {}  # No keys — process_file must initialize them.
         process_file(f, max_line_length=88, interactive=True, _state=state)
         assert "decisions" in state
@@ -1264,7 +1275,7 @@ class TestDecisionReplay:
 
         call_count = 0
 
-        def should_not_be_called():
+        def should_not_be_called(*_, **__):
             nonlocal call_count
             call_count += 1
             return "s"  # would skip if it ever fired
@@ -1295,7 +1306,7 @@ class TestDecisionReplay:
 
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "s")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "s")
 
         key = str(_relative_path(f))
         state = {
@@ -1330,7 +1341,9 @@ class TestDecisionReplay:
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         responses = iter(["a"])
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
 
         # Decision for a different file — should not be replayed for f.
         state = {
@@ -1344,3 +1357,204 @@ class TestDecisionReplay:
         # The user's actual prompt response 'a' was used (not the irrelevant 's').
         assert changed
         assert "wrapped at a short width previously." in content
+
+
+class TestUndoAction:
+    """Phase 4: u (undo) action — pop, rewind, lazy re-write, q-flush."""
+
+    def _make_three_paragraph_file(self, path):
+        """Three rewrappable comment blocks separated by code lines."""
+        path.write_bytes(
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+            b"y = 2\n"
+            b"# Third block that was also wrapped\n"
+            b"# at a short width.\n"
+            b"z = 3\n"
+        )
+
+    def test_in_file_undo_of_accept(self, tmp_path, monkeypatch):
+        """Sequence a a u s s on three paragraphs: undo pops the second a;
+        re-prompted at paragraph 2 the user picks s; paragraph 3 then s."""
+        f = tmp_path / "t.py"
+        self._make_three_paragraph_file(f)
+        responses = iter(["a", "a", "u", "s", "s"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = {}
+        _, content = process_file(f, max_line_length=88, interactive=True, _state=state)
+        assert "# First block that was wrapped at a short width." in content
+        assert "# Second block that was also wrapped\n" in content
+        assert "# Third block that was also wrapped\n" in content
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a", "s", "s"]
+
+    def test_in_file_undo_of_skip(self, tmp_path, monkeypatch):
+        """Sequence s u a a on three paragraphs: undo pops the s at
+        paragraph 1; re-prompted there the user picks a; finishes with a, a."""
+        f = tmp_path / "t.py"
+        self._make_three_paragraph_file(f)
+        responses = iter(["s", "u", "a", "a", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = {}
+        _, content = process_file(f, max_line_length=88, interactive=True, _state=state)
+        assert "# First block that was wrapped at a short width." in content
+        assert "# Second block that was also wrapped at a short width." in content
+        assert "# Third block that was also wrapped at a short width." in content
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a", "a", "a"]
+
+    def test_undo_of_exclude_removes_pragmas(self, tmp_path, monkeypatch):
+        """Excluding a paragraph wraps it in pragmas; undoing the exclude and accepting
+        strips the pragmas."""
+        f = tmp_path / "t.py"
+        self._make_three_paragraph_file(f)
+        # e at paragraph 1 (records the exclude). u at paragraph 2 prompt (pops the
+        # exclude). Re-prompted at paragraph 1: a a a.
+        responses = iter(["e", "u", "a", "a", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        assert "# octowrap: off" not in content
+        assert "# octowrap: on" not in content
+        assert "# First block that was wrapped at a short width." in content
+        assert "# Second block that was also wrapped at a short width." in content
+
+    def test_undo_of_flag_removes_fixme(self, tmp_path, monkeypatch):
+        """Flagging inserts a FIXME marker; undoing the flag and accepting leaves no
+        FIXME or pragmas in the final content."""
+        f = tmp_path / "t.py"
+        self._make_three_paragraph_file(f)
+        responses = iter(["f", "u", "a", "a", "a"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        _, content = process_file(f, max_line_length=88, interactive=True)
+        assert "FIXME" not in content
+        assert "# octowrap: off" not in content
+        assert "# First block that was wrapped at a short width." in content
+
+    def test_undo_of_accept_all_cross_file(self, tmp_path, monkeypatch):
+        """A in file 1 propagates accept_all there; u at file 2 rewinds back into file
+        1's first paragraph (where A was pressed)."""
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        self._make_three_paragraph_file(a)
+        b.write_bytes(WRAPPABLE_CONTENT)
+        # A applies to all 3 of A's paragraphs (silently). Then we hit B's first prompt:
+        # u rewinds back into A's first paragraph (the paragraph where A was pressed).
+        # Re-prompted there the user picks s, then s, s, s for the rest.
+        responses = iter(["A", "u", "s", "s", "s", "s"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        from octowrap.rewrap import _run_session
+
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+        # A is skipped (reverted via flush since previously written).
+        assert a.read_bytes() == (
+            b"# First block that was wrapped\n"
+            b"# at a short width.\n"
+            b"x = 1\n"
+            b"# Second block that was also wrapped\n"
+            b"# at a short width.\n"
+            b"y = 2\n"
+            b"# Third block that was also wrapped\n"
+            b"# at a short width.\n"
+            b"z = 3\n"
+        )
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["s", "s", "s", "s"]
+
+    def test_replay_does_not_reprompt(self, tmp_path, monkeypatch):
+        """Decisions made before an undo are silently replayed on re-entry — the user is
+        only prompted at and beyond the rewind cursor."""
+        f = tmp_path / "t.py"
+        self._make_three_paragraph_file(f)
+
+        prompts: list = []
+        responses = iter(["a", "a", "u", "s", "s"])
+
+        def tracking_prompt(*_, **__):
+            r = next(responses)
+            prompts.append(r)
+            return r
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", tracking_prompt)
+        state = {}
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        # 5 prompts fired: 3 on the first pass, then 2 more after replay of the
+        # un-undone first decision. The first 'a' is replayed silently (not a 6th
+        # prompt).
+        assert prompts == ["a", "a", "u", "s", "s"]
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a", "s", "s"]
+
+    def test_undo_at_session_start_is_a_no_op(self, tmp_path, monkeypatch):
+        """When decisions is empty, the prompt loops past 'u' (can_undo=False rejects
+        it) and accepts the next valid keypress."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        # Drive the real prompt_user via _getch mocking so the can_undo gating actually
+        # fires. With decisions empty, can_undo=False, and the 'u' keypress should be
+        # silently rejected; the prompt loops and the next keypress ('a') takes effect.
+        gets = iter(["u", "a"])
+        monkeypatch.setattr("octowrap.rewrap._getch", lambda: next(gets))
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        state = {}
+        changed, content = process_file(
+            f, max_line_length=88, interactive=True, _state=state
+        )
+        # 'u' was rejected (can_undo=False at session start), 'a' was used.
+        assert changed
+        assert "wrapped at a short width previously." in content
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a"]
+
+    def test_q_flush_reverts_undone_writes_across_files(self, tmp_path, monkeypatch):
+        """Cross-file undo + q: the undone file's on-disk content is reverted to match
+        the (now shorter) decision log."""
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        a.write_bytes(WRAPPABLE_CONTENT)
+        b.write_bytes(WRAPPABLE_CONTENT)
+        # Sequence: in A press 'a' (A written, rewrapped), in B at first prompt press
+        # 'u' (pops the A decision, rewinds to A), at A's re-prompt press 'q' (quit).
+        responses = iter(["a", "u", "q"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        # Drive both files through the real session driver.
+        from octowrap.rewrap import _run_session
+
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+        # The flush ran in finally. A's on-disk should now match the empty decision log
+        # → original content (because undo + skip-on-quit produces the original).
+        assert a.read_bytes() == WRAPPABLE_CONTENT
+        # B was never written.
+        assert b.read_bytes() == WRAPPABLE_CONTENT

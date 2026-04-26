@@ -870,6 +870,7 @@ def colorize(text: str, color: str) -> str:
         "red": "\033[91m",
         "green": "\033[92m",
         "yellow": "\033[93m",
+        "blue": "\033[94m",
         "cyan": "\033[96m",
         "magenta": "\033[95m",
         "reset": "\033[0m",
@@ -970,21 +971,29 @@ def _getch() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
-def prompt_user() -> str:
+def prompt_user(can_undo: bool = True) -> str:
     # noinspection GrazieInspection
     """Prompt user for action on a block.
 
-    Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 'f' (flag), 's' (skip),
-    or 'q' (quit)
+    Returns: 'a' (accept), 'A' (accept all), 'e' (exclude), 'f' (flag),
+    'u' (undo, only when *can_undo* is True), 's' (skip), or 'q' (quit).
+
+    When *can_undo* is False, ``[u]ndo`` is omitted from the rendered prompt
+    and ``u`` keypresses are silently rejected (the prompt re-displays).
+    Callers should pass ``can_undo=False`` when there are no decisions to
+    pop — typically the very first prompt of a session.
     """
-    prompt = (
-        f"[{colorize('a', 'green')}]ccept / "
-        f"accept [{colorize('A', 'green')}]ll / "
-        f"[{colorize('e', 'cyan')}]xclude / "
-        f"[{colorize('f', 'magenta')}]lag / "
-        f"[{colorize('s', 'yellow')}]kip / "
-        f"[{colorize('q', 'red')}]uit? "
-    )
+    parts = [
+        f"[{colorize('a', 'green')}]ccept",
+        f"accept [{colorize('A', 'green')}]ll",
+        f"[{colorize('e', 'cyan')}]xclude",
+        f"[{colorize('f', 'magenta')}]lag",
+    ]
+    if can_undo:
+        parts.append(f"[{colorize('u', 'blue')}]ndo")
+    parts.append(f"[{colorize('s', 'yellow')}]kip")
+    parts.append(f"[{colorize('q', 'red')}]uit")
+    prompt = " / ".join(parts) + "? "
     while True:
         try:
             sys.stdout.write(prompt)
@@ -999,6 +1008,10 @@ def prompt_user() -> str:
                 sys.stdout.write(lowered + "\n")
                 sys.stdout.flush()
                 return lowered
+            if lowered == "u" and can_undo:
+                sys.stdout.write("u\n")
+                sys.stdout.flush()
+                return "u"
             sys.stdout.write("\n")
             sys.stdout.flush()
         except (EOFError, KeyboardInterrupt):
@@ -1021,6 +1034,7 @@ def process_content(
     *,
     decisions: list[Decision] | None = None,
     rewind_to_cursor: tuple | None = None,
+    replay_only: bool = False,
 ) -> tuple[bool, str, str]:
     """Rewrap comment blocks in a string of Python source.
 
@@ -1038,6 +1052,11 @@ def process_content(
     skipped. The cursor at *rewind_to_cursor* (if any) is the exception: that
     position is always prompted, even if a decision exists for it. This is how
     Phase 4's undo feature re-enters mid-file at the popped position.
+
+    When *replay_only* is True, the function never prompts: cursors with a
+    matching decision replay it; cursors without a decision default to skip
+    (preserve original). This is the mode used by ``_flush_dirty_at_quit`` to
+    reconcile on-disk content with the final decision log at session end.
     """
     lines = content.splitlines(keepends=True)
 
@@ -1050,6 +1069,12 @@ def process_content(
     decisions_by_cursor: dict[tuple, str] = (
         {d.cursor: d.action for d in decisions} if decisions else {}
     )
+
+    # Recompute block_current from the session-wide decisions length so the progress
+    # indicator [X/Y] rolls back correctly after undo. The prompt branch increments this
+    # counter from the new baseline.
+    if _state is not None and "block_total" in _state and "decisions" in _state:
+        _state["block_current"] = len(_state["decisions"])
 
     new_lines = []
     user_quit = False
@@ -1121,7 +1146,7 @@ def process_content(
                     )
                     replacement = wrapped_comment + [code_part]
 
-                    if not interactive:
+                    if not interactive and not replay_only:
                         new_lines.extend(replacement)
                         line_idx += 1
                         continue
@@ -1135,6 +1160,12 @@ def process_content(
                         # Replay: silently apply the recorded action without prompting
                         # or showing a diff.
                         action = decisions_by_cursor[cursor]
+                    elif replay_only:
+                        # Un-decided cursor in replay_only mode → default to skip
+                        # (preserve the original line).
+                        new_lines.append(line)
+                        line_idx += 1
+                        continue
                     else:
                         progress = ""
                         if (
@@ -1161,7 +1192,18 @@ def process_content(
                             line_idx += 1  # pragma: no cover
                             continue  # pragma: no cover
 
-                        action = prompt_user()
+                        can_undo = bool(_state is not None and _state.get("decisions"))
+                        action = prompt_user(can_undo=can_undo)
+                        if action == "u":
+                            # Undo: pop the most recent decision, set the rewind target,
+                            # and exit. The session driver will re-enter at the popped
+                            # cursor.
+                            assert _state is not None  # can_undo guarantees this
+                            popped = _state["decisions"].pop()
+                            _state["rewind_target"] = popped
+                            if popped.filepath in _state["last_written"]:
+                                _state["dirty"].add(popped.filepath)
+                            return False, "", "rewind"
                         if (
                             action != "q"
                             and _state is not None
@@ -1308,7 +1350,7 @@ def process_content(
             original = unit["original"]
             rewrapped = unit["rewrapped"]
 
-            if not interactive:
+            if not interactive and not replay_only:
                 new_lines.extend(rewrapped)
                 unit_idx += 1
                 continue
@@ -1330,6 +1372,12 @@ def process_content(
             if cursor in decisions_by_cursor and cursor != rewind_to_cursor:
                 # Replay: apply the recorded action without prompting or showing a diff.
                 action = decisions_by_cursor[cursor]
+            elif replay_only:
+                # Un-decided paragraph in replay_only mode → default to skip (preserve
+                # the original lines).
+                new_lines.extend(original)
+                unit_idx += 1
+                continue
             else:
                 progress = ""
                 if (
@@ -1348,7 +1396,17 @@ def process_content(
                     progress=progress,
                 )
 
-                action = prompt_user()
+                can_undo = bool(_state is not None and _state.get("decisions"))
+                action = prompt_user(can_undo=can_undo)
+                if action == "u":
+                    # Undo: pop the most recent decision, set the rewind target, and
+                    # exit. The session driver will re-enter at the popped cursor.
+                    assert _state is not None  # can_undo guarantees this
+                    popped = _state["decisions"].pop()
+                    _state["rewind_target"] = popped
+                    if popped.filepath in _state["last_written"]:
+                        _state["dirty"].add(popped.filepath)
+                    return False, "", "rewind"
                 if action != "q" and _state is not None and "decisions" in _state:
                     _state["decisions"].append(Decision(filepath, cursor, action))
 
@@ -1490,6 +1548,61 @@ def _init_session_state(state: dict | None) -> dict:
     return state
 
 
+def _flush_dirty_at_quit(
+    _state: dict,
+    paths_by_key: dict[str, Path],
+    *,
+    max_line_length: int = 88,
+    dry_run: bool = False,
+    todo_patterns: list[str] | None = None,
+    todo_case_sensitive: bool = False,
+    todo_multiline: bool = True,
+    inline: bool = True,
+    list_wrap: bool = True,
+) -> None:
+    """Reconcile on-disk content with the final decision log at session end.
+
+    Walks each file in ``_state["dirty"]`` (the set of files that were
+    atomic-written this session and whose decision log has since been
+    mutated by undo), replays its decisions in ``replay_only`` mode
+    (un-decided cursors default to skip), and atomically writes when the
+    result differs from the last-written content.
+
+    Dirty membership is the right scope: non-interactive runs never mark
+    files dirty, so this is a no-op for them. For interactive runs, only
+    files that have a meaningful pending reconciliation get rewritten —
+    files that completed cleanly are already consistent with their log.
+    """
+    if dry_run:
+        return
+    for key in list(_state["dirty"]):
+        if key not in _state["originals"]:
+            _state["dirty"].discard(key)
+            continue
+        original = _state["originals"][key]
+        decisions_for_file = [d for d in _state["decisions"] if d.filepath == key]
+        _changed, new_content, _status = process_content(
+            original,
+            max_line_length,
+            interactive=False,
+            _state=None,  # No state mutation during flush replay.
+            filepath=key,
+            todo_patterns=todo_patterns,
+            todo_case_sensitive=todo_case_sensitive,
+            todo_multiline=todo_multiline,
+            inline=inline,
+            list_wrap=list_wrap,
+            decisions=decisions_for_file,
+            replay_only=True,
+        )
+        prior = _state["last_written"].get(key, original)
+        if new_content != prior:
+            fp = paths_by_key.get(key, Path(key))
+            _atomic_write(fp, new_content)
+            _state["last_written"][key] = new_content
+        _state["dirty"].discard(key)
+
+
 def _run_session(
     filepaths: list[Path],
     _state: dict,
@@ -1504,7 +1617,7 @@ def _run_session(
     list_wrap: bool = True,
     changed_lines_for: Callable[[Path], set[int] | None] | None = None,
 ) -> Iterator[dict]:
-    """Drive a sequence of files through ``process_content`` with replay support.
+    """Drive a sequence of files through ``process_content`` with replay and undo.
 
     Generator that yields one result dict per processed file as soon as that
     file completes (or errors). Yielding lets callers interleave per-file
@@ -1517,80 +1630,105 @@ def _run_session(
     yielding the quitting file's result.
 
     The driver caches each file's original content in ``_state["originals"]``
-    on first read, atomically writes changes to disk, and tracks the last
-    written content in ``_state["last_written"]``. The rewind/lazy-rewrite
-    machinery wired in later phases will reuse these caches.
+    on first read, atomically writes when the new content differs from what
+    was last written (or the original, for unwritten files), and tracks the
+    last-written content in ``_state["last_written"]``. On undo, the loop
+    jumps to the rewind target's file and re-enters; un-decided cursors are
+    re-prompted, replayed cursors are silently applied. A final flush in the
+    ``finally`` block ensures every file on disk matches the final decision
+    log, even when the user quits or the consumer breaks out early.
     """
-    i = 0
-    while i < len(filepaths):
-        fp = filepaths[i]
-        key = str(_relative_path(fp))
-        try:
-            if key not in _state["originals"]:
-                with open(fp, encoding="utf-8", newline="") as f:
-                    _state["originals"][key] = f.read()
-            content = _state["originals"][key]
-            decisions_for_file = [d for d in _state["decisions"] if d.filepath == key]
-            rewind_target = _state.get("rewind_target")
-            rewind_cursor = (
-                rewind_target.cursor
-                if rewind_target is not None and rewind_target.filepath == key
-                else None
-            )
-            changed, new_content, status = process_content(
-                content,
-                max_line_length,
-                interactive=interactive and not dry_run,
-                _state=_state,
-                filepath=key,
-                todo_patterns=todo_patterns,
-                todo_case_sensitive=todo_case_sensitive,
-                todo_multiline=todo_multiline,
-                inline=inline,
-                list_wrap=list_wrap,
-                changed_lines=changed_lines_for(fp) if changed_lines_for else None,
-                decisions=decisions_for_file,
-                rewind_to_cursor=rewind_cursor,
-            )
-        except Exception as e:
-            yield {
-                "filepath": fp,
-                "changed": False,
-                "new_content": "",
-                "original": _state["originals"].get(key, ""),
-                "status": "error",
-                "error": e,
-            }
-            i += 1
-            continue
+    paths_by_key: dict[str, Path] = {str(_relative_path(fp)): fp for fp in filepaths}
+    try:
+        i = 0
+        while i < len(filepaths):
+            fp = filepaths[i]
+            key = str(_relative_path(fp))
+            try:
+                if key not in _state["originals"]:
+                    with open(fp, encoding="utf-8", newline="") as f:
+                        _state["originals"][key] = f.read()
+                content = _state["originals"][key]
+                decisions_for_file = [
+                    d for d in _state["decisions"] if d.filepath == key
+                ]
+                rewind_target = _state.get("rewind_target")
+                rewind_cursor = (
+                    rewind_target.cursor
+                    if rewind_target is not None and rewind_target.filepath == key
+                    else None
+                )
+                changed, new_content, status = process_content(
+                    content,
+                    max_line_length,
+                    interactive=interactive and not dry_run,
+                    _state=_state,
+                    filepath=key,
+                    todo_patterns=todo_patterns,
+                    todo_case_sensitive=todo_case_sensitive,
+                    todo_multiline=todo_multiline,
+                    inline=inline,
+                    list_wrap=list_wrap,
+                    changed_lines=(
+                        changed_lines_for(fp) if changed_lines_for else None
+                    ),
+                    decisions=decisions_for_file,
+                    rewind_to_cursor=rewind_cursor,
+                )
+            except Exception as e:
+                yield {
+                    "filepath": fp,
+                    "changed": False,
+                    "new_content": "",
+                    "original": _state["originals"].get(key, ""),
+                    "status": "error",
+                    "error": e,
+                }
+                i += 1
+                continue
 
-        if status == "rewind":
-            # Phase 4 — for Phase 3 process_content never returns "rewind".
-            target = _state["rewind_target"]
-            assert target is not None
-            for j, fpj in enumerate(filepaths):
-                if str(_relative_path(fpj)) == target.filepath:
-                    i = j
-                    break
-            continue
+            if status == "rewind":
+                target = _state["rewind_target"]
+                assert target is not None
+                for j, fpj in enumerate(filepaths):
+                    if str(_relative_path(fpj)) == target.filepath:
+                        i = j
+                        break
+                continue
 
-        if not dry_run and (changed or key in _state["dirty"]):
-            _atomic_write(fp, new_content)
-            _state["last_written"][key] = new_content
+            # Atomic-write only when the new content differs from what we last wrote (or
+            # the original, for unwritten files). This subsumes the dirty-set check: a
+            # dirty file whose replay happens to match the prior write needs no I/O.
+            prior = _state["last_written"].get(key, _state["originals"][key])
+            if not dry_run and new_content != prior:
+                _atomic_write(fp, new_content)
+                _state["last_written"][key] = new_content
             _state["dirty"].discard(key)
 
-        yield {
-            "filepath": fp,
-            "changed": changed,
-            "new_content": new_content,
-            "original": _state["originals"][key],
-            "status": status,
-            "error": None,
-        }
+            yield {
+                "filepath": fp,
+                "changed": changed,
+                "new_content": new_content,
+                "original": _state["originals"][key],
+                "status": status,
+                "error": None,
+            }
 
-        if status == "quit":
-            return
-        i += 1
+            if status == "quit":
+                return
+            i += 1
+    finally:
+        _flush_dirty_at_quit(
+            _state,
+            paths_by_key,
+            max_line_length=max_line_length,
+            dry_run=dry_run,
+            todo_patterns=todo_patterns,
+            todo_case_sensitive=todo_case_sensitive,
+            todo_multiline=todo_multiline,
+            inline=inline,
+            list_wrap=list_wrap,
+        )
 
 
 def process_file(
