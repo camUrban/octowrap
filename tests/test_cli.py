@@ -131,14 +131,14 @@ class TestMain:
         bad = tmp_path / "bad.py"
         bad.write_bytes(WRAPPABLE_CONTENT)
 
-        real_process_file = mod.process_file
+        real_process_content = mod.process_content
 
-        def failing_process_file(filepath, *args, **kwargs):
-            if filepath.name == "bad.py":
+        def failing_process_content(content, *args, filepath="", **kwargs):
+            if "bad.py" in filepath:
                 raise RuntimeError("fake read error")
-            return real_process_file(filepath, *args, **kwargs)
+            return real_process_content(content, *args, filepath=filepath, **kwargs)
 
-        monkeypatch.setattr(mod, "process_file", failing_process_file)
+        monkeypatch.setattr(mod, "process_content", failing_process_content)
         monkeypatch.setattr("sys.argv", ["octowrap", str(good), str(bad)])
         with pytest.raises(SystemExit) as exc_info:
             main()

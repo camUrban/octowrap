@@ -33,7 +33,7 @@ class TestProcessContent:
     def test_basic_rewrap(self):
         """Wrappable content returns changed=True with joined comment."""
         content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         assert (
             "# This is a comment that was wrapped at a short width previously."
@@ -43,13 +43,13 @@ class TestProcessContent:
     def test_unchanged(self):
         """Clean code returns changed=False with identical content."""
         content = "x = 1\ny = 2\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
         assert result == content
 
     def test_empty_string(self):
         """Empty string returns (False, '')."""
-        changed, result = process_content("", max_line_length=88)
+        changed, result, _ = process_content("", max_line_length=88)
         assert not changed
         assert result == ""
 
@@ -708,7 +708,7 @@ class TestToolDirectivePreservation:
             "# This is another long comment that should also be rewrapped to the correct line length for the file.\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         # The directive must appear on its own line
         result_lines = result.splitlines()
@@ -724,7 +724,7 @@ class TestToolDirectivePreservation:
             "# noqa: E501\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         result_lines = result.splitlines()
         assert "# noqa: E501" in result_lines
@@ -737,7 +737,7 @@ class TestToolDirectivePreservation:
             "# type: ignore[assignment]\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         result_lines = result.splitlines()
         assert "# type: ignore[assignment]" in result_lines
@@ -753,7 +753,7 @@ class TestPragma:
             "# at a short width previously.\n"
             "x = 1\n"
         )
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
         assert result == content
 
@@ -768,7 +768,7 @@ class TestPragma:
             "# at a short width previously.\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         # Protected block preserved
         assert "# This is a comment that was wrapped\n" in result
@@ -792,7 +792,7 @@ class TestPragma:
             "# at a short width previously.\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         # Top block rewrapped
         assert "# This top comment was wrapped at a short width previously." in result
@@ -814,7 +814,7 @@ class TestPragma:
             "# at a short width previously.\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         # Protected block preserved
         assert "# This is a comment that was wrapped\n" in result
@@ -831,12 +831,12 @@ class TestPragma:
             "# at a short width previously.\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
 
     def test_pragma_block_itself_preserved(self):
         content = "# octowrap: off\nx = 1\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert "# octowrap: off" in result
 
     def test_pragma_off_without_on(self):
@@ -850,7 +850,7 @@ class TestPragma:
             "# at a short width previously.\n"
         )
         # fmt: on
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
         assert result == content
 
@@ -870,7 +870,9 @@ class TestPragma:
             return "a"
 
         monkeypatch.setattr("octowrap.rewrap.prompt_user", should_not_be_called)
-        changed, result = process_content(content, max_line_length=88, interactive=True)
+        changed, result, _ = process_content(
+            content, max_line_length=88, interactive=True
+        )
         assert not changed
         assert not called
 
@@ -891,7 +893,7 @@ class TestChangedLinesFiltering:
     def test_none_processes_all(self):
         """changed_lines=None processes everything (default behavior)."""
         content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines=None
         )
         assert changed
@@ -903,7 +905,7 @@ class TestChangedLinesFiltering:
     def test_overlapping_block_processed(self):
         """A comment block at lines 0-1 is rewrapped when line 0 is changed."""
         content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines={0}
         )
         assert changed
@@ -915,7 +917,7 @@ class TestChangedLinesFiltering:
     def test_non_overlapping_skipped(self):
         """A comment block at lines 0-1 is skipped when only line 2 is changed."""
         content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines={2}
         )
         assert not changed
@@ -924,7 +926,7 @@ class TestChangedLinesFiltering:
     def test_empty_set_skips_all(self):
         """An empty changed_lines set skips all blocks."""
         content = "# This is a comment that was wrapped\n# at a short width previously.\nx = 1\n"
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines=set()
         )
         assert not changed
@@ -940,14 +942,14 @@ class TestChangedLinesFiltering:
             "x = 1\n"
         )
         # fmt: on
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines={1}
         )
         assert changed
 
     def test_selective_blocks(self):
         """Two blocks: only the second overlaps changed_lines, only it is rewrapped."""
-        changed, result = process_content(
+        changed, result, _ = process_content(
             self.TWO_BLOCK_CONTENT, max_line_length=88, changed_lines={3}
         )
         assert changed
@@ -964,7 +966,7 @@ class TestChangedLinesFiltering:
             "foo = bar()  # This inline comment is way too long and definitely"
             " exceeds the eighty-eight character line length limit set\n"
         )
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines={0}
         )
         assert not changed
@@ -977,7 +979,7 @@ class TestChangedLinesFiltering:
             "foo = bar()  # This inline comment is way too long and definitely"
             " exceeds the eighty-eight character line length limit set\n"
         )
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines={1}
         )
         assert changed
@@ -994,7 +996,7 @@ class TestChangedLinesFiltering:
             "# no octowrap: on was ever issued.\n"             # line 4
         )
         # fmt: on
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, changed_lines={3, 4}
         )
         assert not changed
@@ -1050,7 +1052,7 @@ class TestTodoIntegration:
 
     def test_todo_rewrapped_in_content(self):
         content = "# TODO: This is a very long todo item that definitely exceeds the eighty-eight character line length limit and should be rewrapped\nx = 1\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         lines = result.splitlines()
         assert lines[0].startswith("# TODO: ")
@@ -1060,7 +1062,7 @@ class TestTodoIntegration:
         content = (
             "# TODO: First line of the todo\n#  continuation of the todo item\nx = 1\n"
         )
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         lines = result.splitlines()
         assert lines[0].startswith("# TODO: ")
         full = " ".join(line.lstrip("# ") for line in lines if line.startswith("#"))
@@ -1069,7 +1071,7 @@ class TestTodoIntegration:
 
     def test_todo_with_custom_patterns_via_kwarg(self):
         content = "# NOTE: This is a long note that exceeds the line length limit and should be rewrapped as a todo-style marker\nx = 1\n"
-        changed, result = process_content(
+        changed, result, _ = process_content(
             content, max_line_length=88, todo_patterns=["note"]
         )
         assert changed
@@ -1078,7 +1080,7 @@ class TestTodoIntegration:
 
     def test_empty_patterns_disables_todo(self):
         content = "# TODO: short\nx = 1\n"
-        _, result = process_content(content, max_line_length=88, todo_patterns=[])
+        _, result, _ = process_content(content, max_line_length=88, todo_patterns=[])
         assert "# TODO: short" in result
 
     def test_todo_rewrap_through_process_file(self, tmp_path):
@@ -1234,11 +1236,111 @@ class TestDecisionRecording:
         assert state["decisions"][0].filepath
         assert state["decisions"][0].filepath.endswith("t.py")
 
-    def test_no_recording_when_decisions_key_absent(self, tmp_path, monkeypatch):
-        """If _state lacks a 'decisions' key, recording is silently skipped."""
+    def test_state_keys_auto_initialized_for_interactive_runs(
+        self, tmp_path, monkeypatch
+    ):
+        """process_file(interactive=True) with an empty state populates every session-
+        driver key so recording and replay both work."""
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
-        state = {}  # No 'decisions' key — must not crash, must not add one.
+        state = {}  # No keys — process_file must initialize them.
         process_file(f, max_line_length=88, interactive=True, _state=state)
-        assert "decisions" not in state
+        assert "decisions" in state
+        assert len(state["decisions"]) == 1
+        assert {"originals", "last_written", "dirty", "rewind_target"} <= state.keys()
+
+
+class TestDecisionReplay:
+    """Phase 3: pre-populated decisions are replayed without prompting."""
+
+    def test_replayed_decision_skips_prompt(self, tmp_path, monkeypatch):
+        """When _state['decisions'] already contains a Decision matching the cursor,
+        prompt_user is never called and the recorded action is applied silently."""
+        from octowrap.rewrap import _relative_path
+
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+
+        call_count = 0
+
+        def should_not_be_called():
+            nonlocal call_count
+            call_count += 1
+            return "s"  # would skip if it ever fired
+
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", should_not_be_called)
+
+        # Pre-populate a decision matching the only paragraph in WRAPPABLE_CONTENT.
+        # Cursor for a paragraph is (block_start_idx, unit_raw_start) — the comment
+        # block in this fixture starts at line 0 with raw_start 0.
+        key = str(_relative_path(f))
+        state = {
+            "decisions": [Decision(filepath=key, cursor=(0, 0), action="a")],
+        }
+
+        changed, content = process_file(
+            f, max_line_length=88, interactive=True, _state=state
+        )
+
+        assert call_count == 0, "prompt_user should never fire during replay"
+        assert changed
+        # Action was 'a' (accept) — content should be the rewrapped version.
+        assert "wrapped at a short width previously." in content
+
+    def test_replay_preserves_decision_log(self, tmp_path, monkeypatch):
+        """Replayed actions are not re-recorded — the decisions list stays the same
+        length after replay."""
+        from octowrap.rewrap import _relative_path
+
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "s")
+
+        key = str(_relative_path(f))
+        state = {
+            "decisions": [Decision(filepath=key, cursor=(0, 0), action="a")],
+        }
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+        # Still exactly the one pre-populated decision; no duplicates from replay.
+        assert len(state["decisions"]) == 1
+        assert state["decisions"][0].action == "a"
+
+    def test_replayed_skip_keeps_original(self, tmp_path, monkeypatch):
+        """A pre-populated 's' decision replays as a skip — file unchanged."""
+        from octowrap.rewrap import _relative_path
+
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user",
+            lambda: pytest.fail("prompt_user should not be called"),
+        )
+
+        key = str(_relative_path(f))
+        state = {
+            "decisions": [Decision(filepath=key, cursor=(0, 0), action="s")],
+        }
+        changed, _ = process_file(f, max_line_length=88, interactive=True, _state=state)
+        assert not changed
+        assert f.read_bytes() == WRAPPABLE_CONTENT
+
+    def test_decisions_for_other_files_are_ignored(self, tmp_path, monkeypatch):
+        """Only decisions whose filepath matches the current file are replayed."""
+        f = tmp_path / "t.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        responses = iter(["a"])
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: next(responses))
+
+        # Decision for a different file — should not be replayed for f.
+        state = {
+            "decisions": [
+                Decision(filepath="other_file.py", cursor=(0, 0), action="s"),
+            ],
+        }
+        changed, content = process_file(
+            f, max_line_length=88, interactive=True, _state=state
+        )
+        # The user's actual prompt response 'a' was used (not the irrelevant 's').
+        assert changed
+        assert "wrapped at a short width previously." in content

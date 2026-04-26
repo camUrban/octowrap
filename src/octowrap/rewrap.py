@@ -21,7 +21,7 @@ import sys
 import tempfile
 import textwrap
 import tokenize
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1018,15 +1018,26 @@ def process_content(
     inline: bool = True,
     list_wrap: bool = True,
     changed_lines: set[int] | None = None,
-) -> tuple[bool, str]:
+    *,
+    decisions: list[Decision] | None = None,
+    rewind_to_cursor: tuple | None = None,
+) -> tuple[bool, str, str]:
     """Rewrap comment blocks in a string of Python source.
 
-    Returns (changed, new_content).  When *_state* is a dict and the user presses quit
-    in interactive mode, ``_state["quit"]`` is set to ``True``.
+    Returns ``(changed, new_content, status)`` where ``status`` is one of
+    ``"complete"``, ``"quit"``, or ``"rewind"``. When *_state* is a dict and the
+    user presses quit in interactive mode, ``_state["quit"]`` is also set to
+    ``True`` for backward compatibility with the pre-status callers.
 
     When *changed_lines* is not ``None``, only comment blocks whose line range overlaps
     the given set of 0-based line indices are processed.  Blocks with no overlap are
     preserved verbatim.
+
+    When *decisions* is provided, each ``Decision``'s recorded action is replayed
+    silently when its cursor is encountered during iteration — ``prompt_user()`` is
+    skipped. The cursor at *rewind_to_cursor* (if any) is the exception: that
+    position is always prompted, even if a decision exists for it. This is how
+    Phase 4's undo feature re-enters mid-file at the popped position.
     """
     lines = content.splitlines(keepends=True)
 
@@ -1036,6 +1047,10 @@ def process_content(
     blocks = parse_comment_blocks(lines_stripped)
     comment_positions = compute_comment_positions(content)
 
+    decisions_by_cursor: dict[tuple, str] = (
+        {d.cursor: d.action for d in decisions} if decisions else {}
+    )
+
     new_lines = []
     user_quit = False
     accept_all = False
@@ -1044,26 +1059,32 @@ def process_content(
     for block in blocks:
         if block["type"] == "code":
             if not disabled and inline:
-                for line_idx, line in enumerate(block["lines"]):
+                line_idx = 0
+                while line_idx < len(block["lines"]):
+                    line = block["lines"][line_idx]
                     if user_quit:
                         new_lines.append(line)
+                        line_idx += 1
                         continue
 
                     # Only consider lines that exceed the maximum length.
                     if len(line.rstrip("\n")) <= max_line_length:
                         new_lines.append(line)
+                        line_idx += 1
                         continue
 
                     # Skip lines not in the changed set.
                     if changed_lines is not None:
                         if (block["start_idx"] + line_idx) not in changed_lines:
                             new_lines.append(line)
+                            line_idx += 1
                             continue
 
                     # Extract the inline comment and build replacement lines.
                     extracted = extract_inline_comment(line)
                     if not extracted:
                         new_lines.append(line)
+                        line_idx += 1
                         continue
 
                     # Guard against a ``#`` that lives inside a multi-line string
@@ -1075,11 +1096,13 @@ def process_content(
                         abs_line_no = block["start_idx"] + line_idx + 1
                         if (abs_line_no, hash_col) not in comment_positions:
                             new_lines.append(line)
+                            line_idx += 1
                             continue
 
                     code_part, comment_text = extracted
                     if is_tool_directive(comment_text):
                         new_lines.append(line)
+                        line_idx += 1
                         continue
                     indent = " " * (len(line) - len(line.lstrip()))
                     synthetic = {
@@ -1100,8 +1123,18 @@ def process_content(
 
                     if not interactive:
                         new_lines.extend(replacement)
-                    elif accept_all:
+                        line_idx += 1
+                        continue
+                    if accept_all:
                         new_lines.extend(replacement)
+                        line_idx += 1
+                        continue
+
+                    cursor = (block["start_idx"], "inline", line_idx)
+                    if cursor in decisions_by_cursor and cursor != rewind_to_cursor:
+                        # Replay: silently apply the recorded action without prompting
+                        # or showing a diff.
+                        action = decisions_by_cursor[cursor]
                     else:
                         progress = ""
                         if (
@@ -1121,60 +1154,60 @@ def process_content(
                             filepath=filepath,
                             progress=progress,
                         )
-
-                        if has_changes:
-                            action = prompt_user()
-
-                            if (
-                                action != "q"
-                                and _state is not None
-                                and "decisions" in _state
-                            ):
-                                cursor = (block["start_idx"], "inline", line_idx)
-                                _state["decisions"].append(
-                                    Decision(filepath, cursor, action)
-                                )
-
-                            if action == "A":
-                                accept_all = True
-                                new_lines.extend(replacement)
-                            elif action == "a":
-                                new_lines.extend(replacement)
-                            elif action == "e":
-                                new_lines.append(f"{indent}# octowrap: off")
-                                new_lines.append(line)
-                                new_lines.append(f"{indent}# octowrap: on")
-                            elif action == "f":
-                                initial = f"{indent}# FIXME: "
-                                subsequent = f"{indent}#  "
-                                flag_text = (
-                                    "Manually fix the below comment"
-                                    " (flagged using octowrap in"
-                                    " interactive mode)."
-                                )
-                                wrapped = textwrap.fill(
-                                    flag_text,
-                                    width=max_line_length,
-                                    initial_indent=initial,
-                                    subsequent_indent=subsequent,
-                                    break_on_hyphens=False,
-                                    break_long_words=False,
-                                )
-                                new_lines.append(f"{indent}# octowrap: off")
-                                new_lines.extend(wrapped.split("\n"))
-                                new_lines.append(line)
-                                new_lines.append(f"{indent}# octowrap: on")
-                            elif action == "q":
-                                user_quit = True
-                                if _state is not None:
-                                    _state["quit"] = True
-                                new_lines.append(line)
-                            else:  # skip
-                                new_lines.append(line)
-                        else:
+                        if not has_changes:
                             # Defensive: inline extraction always changes the line count
                             # (1 -> 2+), so this branch is unreachable in practice.
                             new_lines.append(line)  # pragma: no cover
+                            line_idx += 1  # pragma: no cover
+                            continue  # pragma: no cover
+
+                        action = prompt_user()
+                        if (
+                            action != "q"
+                            and _state is not None
+                            and "decisions" in _state
+                        ):
+                            _state["decisions"].append(
+                                Decision(filepath, cursor, action)
+                            )
+
+                    if action == "A":
+                        accept_all = True
+                        new_lines.extend(replacement)
+                    elif action == "a":
+                        new_lines.extend(replacement)
+                    elif action == "e":
+                        new_lines.append(f"{indent}# octowrap: off")
+                        new_lines.append(line)
+                        new_lines.append(f"{indent}# octowrap: on")
+                    elif action == "f":
+                        initial = f"{indent}# FIXME: "
+                        subsequent = f"{indent}#  "
+                        flag_text = (
+                            "Manually fix the below comment"
+                            " (flagged using octowrap in"
+                            " interactive mode)."
+                        )
+                        wrapped = textwrap.fill(
+                            flag_text,
+                            width=max_line_length,
+                            initial_indent=initial,
+                            subsequent_indent=subsequent,
+                            break_on_hyphens=False,
+                            break_long_words=False,
+                        )
+                        new_lines.append(f"{indent}# octowrap: off")
+                        new_lines.extend(wrapped.split("\n"))
+                        new_lines.append(line)
+                        new_lines.append(f"{indent}# octowrap: on")
+                    elif action == "q":
+                        user_quit = True
+                        if _state is not None:
+                            _state["quit"] = True
+                        new_lines.append(line)
+                    else:  # skip
+                        new_lines.append(line)
+                    line_idx += 1
             else:
                 new_lines.extend(block["lines"])
             continue
@@ -1269,46 +1302,55 @@ def process_content(
             list_wrap=list_wrap,
         )
 
-        for unit in units:
+        unit_idx = 0
+        while unit_idx < len(units):
+            unit = units[unit_idx]
             original = unit["original"]
             rewrapped = unit["rewrapped"]
 
             if not interactive:
                 new_lines.extend(rewrapped)
+                unit_idx += 1
                 continue
             if accept_all:
                 new_lines.extend(rewrapped)
+                unit_idx += 1
                 continue
             if user_quit:
                 new_lines.extend(original)
+                unit_idx += 1
                 continue
             if original == rewrapped:
                 # Unchanged paragraph — pass through silently, no prompt.
                 new_lines.extend(original)
+                unit_idx += 1
                 continue
 
-            progress = ""
-            if (
-                _state is not None
-                and "block_total" in _state
-                and _state["block_total"] > 0
-            ):
-                _state["block_current"] = _state.get("block_current", 0) + 1
-                progress = f"[{_state['block_current']}/{_state['block_total']}]"
+            cursor = (block["start_idx"], unit["raw_start"])
+            if cursor in decisions_by_cursor and cursor != rewind_to_cursor:
+                # Replay: apply the recorded action without prompting or showing a diff.
+                action = decisions_by_cursor[cursor]
+            else:
+                progress = ""
+                if (
+                    _state is not None
+                    and "block_total" in _state
+                    and _state["block_total"] > 0
+                ):
+                    _state["block_current"] = _state.get("block_current", 0) + 1
+                    progress = f"[{_state['block_current']}/{_state['block_total']}]"
 
-            show_block_diff(
-                original,
-                rewrapped,
-                block["start_idx"] + unit["raw_start"],
-                filepath=filepath,
-                progress=progress,
-            )
+                show_block_diff(
+                    original,
+                    rewrapped,
+                    block["start_idx"] + unit["raw_start"],
+                    filepath=filepath,
+                    progress=progress,
+                )
 
-            action = prompt_user()
-
-            if action != "q" and _state is not None and "decisions" in _state:
-                cursor = (block["start_idx"], unit["raw_start"])
-                _state["decisions"].append(Decision(filepath, cursor, action))
+                action = prompt_user()
+                if action != "q" and _state is not None and "decisions" in _state:
+                    _state["decisions"].append(Decision(filepath, cursor, action))
 
             if action == "A":
                 accept_all = True
@@ -1347,6 +1389,7 @@ def process_content(
                 new_lines.extend(original)
             else:  # skip
                 new_lines.extend(original)
+            unit_idx += 1
 
     # Restore the original line ending style.
     if lines and lines[0].endswith("\r\n"):
@@ -1361,8 +1404,9 @@ def process_content(
         new_content += ending
 
     changed = new_content != content
+    status = "quit" if user_quit else "complete"
 
-    return changed, new_content
+    return changed, new_content, status
 
 
 def _relative_path(filepath: Path) -> Path:
@@ -1405,12 +1449,15 @@ def _drive_file(
 ) -> tuple[bool, str]:
     """Read *filepath* and run ``process_content``; no file writes.
 
-    Pure read + transform; the caller decides whether to persist.
+    Pure read + transform; the caller decides whether to persist. Returns
+    ``(changed, new_content)`` — the third element of ``process_content``'s
+    return (``status``) is dropped because the non-interactive path always
+    completes normally.
     """
     with open(filepath, encoding="utf-8", newline="") as f:
         content = f.read()
 
-    return process_content(
+    changed, new_content, _status = process_content(
         content,
         max_line_length,
         interactive=interactive and not dry_run,
@@ -1423,6 +1470,24 @@ def _drive_file(
         list_wrap=list_wrap,
         changed_lines=changed_lines,
     )
+    return changed, new_content
+
+
+def _init_session_state(state: dict | None) -> dict:
+    """Ensure *state* has every session-driver key initialized; return it.
+
+    Idempotent — passing a partially-populated dict (e.g. one that already has
+    ``decisions``) preserves existing values and only fills in the missing
+    keys.
+    """
+    if state is None:
+        state = {}
+    state.setdefault("decisions", [])
+    state.setdefault("originals", {})
+    state.setdefault("last_written", {})
+    state.setdefault("dirty", set())
+    state.setdefault("rewind_target", None)
+    return state
 
 
 def _run_session(
@@ -1438,29 +1503,94 @@ def _run_session(
     inline: bool = True,
     list_wrap: bool = True,
     changed_lines_for: Callable[[Path], set[int] | None] | None = None,
-) -> None:
-    """Drive a sequence of files through the interactive/non-interactive loop.
+) -> Iterator[dict]:
+    """Drive a sequence of files through ``process_content`` with replay support.
 
-    Skeleton for the eventual undo-aware session driver. For now it routes every file
-    through the existing single-file path so behavior matches the pre-refactor flow
-    exactly. Later phases will add replay, rewind, and lazy re-write here.
+    Generator that yields one result dict per processed file as soon as that
+    file completes (or errors). Yielding lets callers interleave per-file
+    output (e.g. ``Reformatted: foo.py``) with subsequent files' interactive
+    prompts, preserving the pre-refactor UX ordering.
+
+    Each yielded dict has keys: ``filepath``, ``changed``, ``new_content``,
+    ``original``, ``status`` (``"complete"``, ``"quit"``, or ``"error"``), and
+    ``error`` (an exception or ``None``). On quit, the loop terminates after
+    yielding the quitting file's result.
+
+    The driver caches each file's original content in ``_state["originals"]``
+    on first read, atomically writes changes to disk, and tracks the last
+    written content in ``_state["last_written"]``. The rewind/lazy-rewrite
+    machinery wired in later phases will reuse these caches.
     """
-    for fp in filepaths:
-        process_file(
-            fp,
-            max_line_length,
-            dry_run=dry_run,
-            interactive=interactive,
-            _state=_state,
-            todo_patterns=todo_patterns,
-            todo_case_sensitive=todo_case_sensitive,
-            todo_multiline=todo_multiline,
-            inline=inline,
-            list_wrap=list_wrap,
-            changed_lines=changed_lines_for(fp) if changed_lines_for else None,
-        )
-        if _state.get("quit"):
-            break
+    i = 0
+    while i < len(filepaths):
+        fp = filepaths[i]
+        key = str(_relative_path(fp))
+        try:
+            if key not in _state["originals"]:
+                with open(fp, encoding="utf-8", newline="") as f:
+                    _state["originals"][key] = f.read()
+            content = _state["originals"][key]
+            decisions_for_file = [d for d in _state["decisions"] if d.filepath == key]
+            rewind_target = _state.get("rewind_target")
+            rewind_cursor = (
+                rewind_target.cursor
+                if rewind_target is not None and rewind_target.filepath == key
+                else None
+            )
+            changed, new_content, status = process_content(
+                content,
+                max_line_length,
+                interactive=interactive and not dry_run,
+                _state=_state,
+                filepath=key,
+                todo_patterns=todo_patterns,
+                todo_case_sensitive=todo_case_sensitive,
+                todo_multiline=todo_multiline,
+                inline=inline,
+                list_wrap=list_wrap,
+                changed_lines=changed_lines_for(fp) if changed_lines_for else None,
+                decisions=decisions_for_file,
+                rewind_to_cursor=rewind_cursor,
+            )
+        except Exception as e:
+            yield {
+                "filepath": fp,
+                "changed": False,
+                "new_content": "",
+                "original": _state["originals"].get(key, ""),
+                "status": "error",
+                "error": e,
+            }
+            i += 1
+            continue
+
+        if status == "rewind":
+            # Phase 4 — for Phase 3 process_content never returns "rewind".
+            target = _state["rewind_target"]
+            assert target is not None
+            for j, fpj in enumerate(filepaths):
+                if str(_relative_path(fpj)) == target.filepath:
+                    i = j
+                    break
+            continue
+
+        if not dry_run and (changed or key in _state["dirty"]):
+            _atomic_write(fp, new_content)
+            _state["last_written"][key] = new_content
+            _state["dirty"].discard(key)
+
+        yield {
+            "filepath": fp,
+            "changed": changed,
+            "new_content": new_content,
+            "original": _state["originals"][key],
+            "status": status,
+            "error": None,
+        }
+
+        if status == "quit":
+            return
+        i += 1
 
 
 def process_file(
@@ -1478,8 +1608,34 @@ def process_file(
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
-    Returns (changed, new_content).
+    Returns (changed, new_content). Interactive runs are routed through
+    ``_run_session`` so single-file callers exercise the same replay-aware
+    driver that ``main()`` uses.
     """
+    if interactive and not dry_run:
+        state = _init_session_state(_state)
+        for _result in _run_session(
+            [filepath],
+            state,
+            max_line_length=max_line_length,
+            dry_run=dry_run,
+            interactive=True,
+            todo_patterns=todo_patterns,
+            todo_case_sensitive=todo_case_sensitive,
+            todo_multiline=todo_multiline,
+            inline=inline,
+            list_wrap=list_wrap,
+            changed_lines_for=(
+                (lambda _fp: changed_lines) if changed_lines is not None else None
+            ),
+        ):
+            if _result["error"] is not None:
+                raise _result["error"]
+        key = str(_relative_path(filepath))
+        original = state["originals"].get(key, "")
+        new_content = state["last_written"].get(key, original)
+        return new_content != original, new_content
+
     changed, new_content = _drive_file(
         filepath,
         max_line_length,
@@ -1697,7 +1853,7 @@ def main():
             raise SystemExit(1)
 
         content = sys.stdin.read()
-        changed, new_content = process_content(
+        changed, new_content, _status = process_content(
             content,
             args.line_length,
             todo_patterns=todo_patterns,
@@ -1788,13 +1944,7 @@ def main():
 
     changed_count = 0
     error_count = 0
-    interactive_state: dict = {
-        "decisions": [],
-        "originals": {},
-        "last_written": {},
-        "dirty": set(),
-        "rewind_target": None,
-    }
+    interactive_state: dict = _init_session_state(None)
 
     # Pre-scan to count total changed blocks for interactive progress indicator.
     if args.interactive and not args.dry_run:
@@ -1817,47 +1967,41 @@ def main():
         interactive_state["block_total"] = total_blocks
         interactive_state["block_current"] = 0
 
-    for filepath in files_to_process:
-        try:
-            original: str | None = (
-                filepath.read_text(encoding="utf-8") if args.diff else None
+    for result in _run_session(
+        files_to_process,
+        interactive_state,
+        max_line_length=args.line_length,
+        dry_run=args.dry_run,
+        interactive=args.interactive,
+        todo_patterns=todo_patterns,
+        todo_case_sensitive=todo_case_sensitive,
+        todo_multiline=todo_multiline,
+        inline=args.inline,
+        list_wrap=list_wrap,
+        changed_lines_for=_file_changed_lines,
+    ):
+        filepath = result["filepath"]
+        if result["error"] is not None:
+            print(
+                f"error: Failed to process {filepath}: {result['error']}",
+                file=sys.stderr,
             )
-            changed, new_content = process_file(
-                filepath,
-                args.line_length,
-                dry_run=args.dry_run,
-                interactive=args.interactive,
-                _state=interactive_state,
-                todo_patterns=todo_patterns,
-                todo_case_sensitive=todo_case_sensitive,
-                todo_multiline=todo_multiline,
-                inline=args.inline,
-                list_wrap=list_wrap,
-                changed_lines=_file_changed_lines(filepath),
-            )
-
-            if changed:
-                changed_count += 1
-                if args.diff:
-                    assert type(original) is str
-
-                    diff = difflib.unified_diff(
-                        original.splitlines(keepends=True),
-                        new_content.splitlines(keepends=True),
-                        fromfile=str(filepath),
-                        tofile=str(filepath),
-                    )
-                    print("".join(diff))
-                elif args.dry_run:
-                    print(f"Would reformat: {filepath}")
-                else:
-                    print(f"Reformatted: {filepath}")
-        except Exception as e:
-            print(f"error: Failed to process {filepath}: {e}", file=sys.stderr)
             error_count += 1
-
-        if interactive_state.get("quit"):
-            break
+            continue
+        if result["changed"]:
+            changed_count += 1
+            if args.diff:
+                diff = difflib.unified_diff(
+                    result["original"].splitlines(keepends=True),
+                    result["new_content"].splitlines(keepends=True),
+                    fromfile=str(filepath),
+                    tofile=str(filepath),
+                )
+                print("".join(diff))
+            elif args.dry_run:
+                print(f"Would reformat: {filepath}")
+            else:
+                print(f"Reformatted: {filepath}")
 
     action = "would be reformatted" if args.dry_run else "reformatted"
     print(f"\n{changed_count} file(s) {action}.")
