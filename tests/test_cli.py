@@ -330,7 +330,7 @@ class TestConfigIntegration:
         main()
         content = f.read_text()
         lines = content.splitlines()
-        # TODO should NOT be treated as a marker — continuation lines should use
+        # TODO should NOT be treated as a marker. The continuation lines should use
         # prose style ("# ") not TODO continuation style ("#  ")
         assert len(lines) > 2  # Should be rewrapped across multiple lines
         assert lines[1].startswith("# ") and not lines[1].startswith("#  ")
@@ -893,7 +893,7 @@ class TestInteractiveProgress:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
-        # Two changed paragraphs in one block → [1/2] and [2/2].
+        # Two changed paragraphs in one block -> [1/2] and [2/2].
         assert "[1/2]" in out
         assert "[2/2]" in out
 
@@ -1230,7 +1230,7 @@ class TestDiffOnly:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", counting_prompt)
         monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", "-i", str(f)])
         main()
-        # Only the second block overlaps — one prompt
+        # Only the second block overlaps.
         assert call_count == 1
 
     def test_diff_only_path_resolution(self, tmp_path, monkeypatch, capsys):
@@ -1256,6 +1256,7 @@ class TestDiffOnly:
         f.write_bytes(b"x = 1\n")
         monkeypatch.setattr("octowrap.rewrap.get_repo_root", lambda: tmp_path)
 
+        # noinspection PyUnusedLocal
         def _fail(base="HEAD"):
             raise NotAGitRepoError("bad ref")
 

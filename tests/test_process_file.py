@@ -459,7 +459,7 @@ class TestProcessFileInteractive:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         process_file(f, max_line_length=88, interactive=True)
         first_pass = f.read_bytes()
-        # Second run in batch mode — nothing should change because the pragmas disable
+        # Second run in batch mode. Nothing should change because the pragmas disable
         # rewrapping inside the flagged region.
         changed, content = process_file(f, max_line_length=88)
         assert not changed
@@ -571,7 +571,7 @@ class TestBlockPromptUnits:
     def test_adjacent_todo_markers_are_separate_units(self):
         """Adjacent TODO-style markers (no blank line) each get their own unit.
 
-        Unlike list items, todo-type paragraphs are NOT grouped — each marker is a
+        Unlike list items, todo-type paragraphs are NOT grouped. Each marker is a
         distinct task and users may want to accept/skip them independently.
         """
         block = self._block(
@@ -1227,8 +1227,8 @@ class TestDecisionRecording:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "A")
         state = {"decisions": []}
         process_file(f, max_line_length=88, interactive=True, _state=state)
-        # One keypress, one decision — accept-all is recorded once even though it
-        # applies to all subsequent paragraphs.
+        # One keypress, one decision. Accept-all is recorded once even though it applies
+        # to all subsequent paragraphs.
         assert len(state["decisions"]) == 1
         assert state["decisions"][0].action == "A"
 
@@ -1278,7 +1278,7 @@ class TestDecisionRecording:
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
-        state = {}  # No keys — process_file must initialize them.
+        state = {}  # No keys. process_file must initialize them.
         process_file(f, max_line_length=88, interactive=True, _state=state)
         assert "decisions" in state
         assert len(state["decisions"]) == 1
@@ -1306,8 +1306,8 @@ class TestDecisionReplay:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", should_not_be_called)
 
         # Pre-populate a decision matching the only paragraph in WRAPPABLE_CONTENT.
-        # Cursor for a paragraph is (block_start_idx, unit_raw_start) — the comment
-        # block in this fixture starts at line 0 with raw_start 0.
+        # Cursor for a paragraph is (block_start_idx, unit_raw_start). The comment block
+        # in this fixture starts at line 0 with raw_start 0.
         key = str(_relative_path(f))
         state = {
             "decisions": [Decision(filepath=key, cursor=(0, 0), action="a")],
@@ -1319,12 +1319,14 @@ class TestDecisionReplay:
 
         assert call_count == 0, "prompt_user should never fire during replay"
         assert changed
-        # Action was 'a' (accept) — content should be the rewrapped version.
+        # The action was 'a' (accept). Content should be the rewrapped version.
         assert "wrapped at a short width previously." in content
 
     def test_replay_preserves_decision_log(self, tmp_path, monkeypatch):
-        """Replayed actions are not re-recorded — the decisions list stays the same
-        length after replay."""
+        """Replayed actions are not re-recorded.
+
+        The decisions list stays the same length after replay.
+        """
         from octowrap.rewrap import _relative_path
 
         f = tmp_path / "t.py"
@@ -1341,7 +1343,10 @@ class TestDecisionReplay:
         assert state["decisions"][0].action == "a"
 
     def test_replayed_skip_keeps_original(self, tmp_path, monkeypatch):
-        """A pre-populated 's' decision replays as a skip — file unchanged."""
+        """A pre-populated 's' decision replays as a skip.
+
+        The file stays unchanged.
+        """
         from octowrap.rewrap import _relative_path
 
         f = tmp_path / "t.py"
@@ -1368,7 +1373,7 @@ class TestDecisionReplay:
             "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
         )
 
-        # Decision for a different file — should not be replayed for f.
+        # Decisions for a different file should not be replayed for f.
         state = {
             "decisions": [
                 Decision(filepath="other_file.py", cursor=(0, 0), action="s"),
@@ -1383,9 +1388,10 @@ class TestDecisionReplay:
 
 
 class TestUndoAction:
-    """Phase 4: u (undo) action — pop, rewind, lazy re-write, q-flush."""
+    """U (undo) action: pop, rewind, lazy re-write, q-flush."""
 
-    def _make_three_paragraph_file(self, path):
+    @staticmethod
+    def _make_three_paragraph_file(path):
         """Three rewrappable comment blocks separated by code lines."""
         path.write_bytes(
             b"# First block that was wrapped\n"
@@ -1506,8 +1512,10 @@ class TestUndoAction:
         assert actions == ["s", "s", "s", "s"]
 
     def test_replay_does_not_reprompt(self, tmp_path, monkeypatch):
-        """Decisions made before an undo are silently replayed on re-entry — the user is
-        only prompted at and beyond the rewind cursor."""
+        """Decisions made before an undo are silently replayed on re-entry.
+
+        The user is only prompted at and beyond the rewind cursor.
+        """
         f = tmp_path / "t.py"
         self._make_three_paragraph_file(f)
 
@@ -1577,7 +1585,7 @@ class TestUndoAction:
             )
         )
         # The flush ran in finally. A's on-disk should now match the empty decision log
-        # → original content (because undo + skip-on-quit produces the original).
+        # -> original content (because undo + skip-on-quit produces the original).
         assert a.read_bytes() == WRAPPABLE_CONTENT
         # B was never written.
         assert b.read_bytes() == WRAPPABLE_CONTENT
@@ -1628,7 +1636,7 @@ class TestUndoAction:
             b"# This is a comment that was wrapped at a short width previously.\n"
             b"x = 1\n"
         )
-        # A finished as 'skip' → original on disk. B finished as 'accept' → rewrapped.
+        # A finished as 'skip' -> original on disk. B finished as 'accept' -> rewrapped.
         assert a.read_bytes() == WRAPPABLE_CONTENT
         assert b.read_bytes() == rewrapped
         # A was atomic-written twice (once for the initial 'a', once to revert via 's');
@@ -1673,11 +1681,11 @@ class TestUndoAction:
         )
         # A not yet written before its first prompt.
         assert a_disk_at_each_prompt[0] == WRAPPABLE_CONTENT
-        # By B's first prompt, A's loop has completed → atomic-write happened.
+        # By B's first prompt, A's loop has completed -> atomic-write happened.
         assert a_disk_at_each_prompt[1] == rewrapped
         # Lazy: undo is in-memory only; A on disk is unchanged at the rewind step.
         assert a_disk_at_each_prompt[2] == rewrapped
-        # By B's re-prompt, A's loop has since re-completed with 's' → reverted.
+        # By B's re-prompt, A's loop has since re-completed with 's' -> reverted.
         assert a_disk_at_each_prompt[3] == WRAPPABLE_CONTENT
 
     def test_q_flush_full_revert_of_two_written_files(self, tmp_path, monkeypatch):
@@ -1693,8 +1701,8 @@ class TestUndoAction:
         a.write_bytes(WRAPPABLE_CONTENT)
         b.write_bytes(WRAPPABLE_CONTENT)
         c.write_bytes(WRAPPABLE_CONTENT)
-        # A.p1: a (A written). B.p1: a (B written). C.p1: u (pops B → B dirty). B
-        # re-prompt: u (pops A → A dirty). A re-prompt: q.
+        # A.p1: a (A written). B.p1: a (B written). C.p1: u (pops B -> B dirty). B
+        # re-prompt: u (pops A -> A dirty). A re-prompt: q.
         responses = iter(["a", "a", "u", "u", "q"])
         monkeypatch.setattr(
             "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
@@ -1788,11 +1796,11 @@ class TestUndoAction:
         )
         actions = [d.action for d in state["decisions"]]
         assert actions == ["s", "a"]
-        # Block 1 skipped → original preserved.
+        # Block 1 skipped -> original preserved.
         assert "# First block that was wrapped\n# at a short width.\n" in content
-        # Block 2 filtered out → untouched.
+        # Block 2 filtered out -> untouched.
         assert "# Second block that was also wrapped\n# at a short width.\n" in content
-        # Block 3 accepted → rewrapped to a single line.
+        # Block 3 accepted -> rewrapped to a single line.
         assert "# Third block that was also wrapped at a short width." in content
 
     def test_undo_of_inline_extraction(self, tmp_path, monkeypatch):
@@ -1821,11 +1829,11 @@ class TestUndoAction:
             len(d.cursor) == 3 and d.cursor[1] == "inline" for d in state["decisions"]
         )
         lines = content.splitlines()
-        # Line 1 was skipped — its inline overflow stays in place on the same line.
+        # Line 1 was skipped. Its inline overflow stays in place on the same line.
         x_line = next(ln for ln in lines if ln.startswith("x = 1"))
         assert "this inline comment" in x_line
-        # Line 2 was accepted — the inline was extracted to a comment block above and
-        # the code line itself no longer carries the trailing comment.
+        # Line 2 was accepted. The inline was extracted to a comment block above and the
+        # code line itself no longer carries the trailing comment.
         y_line = next(ln for ln in lines if ln.startswith("y = 2"))
         assert "#" not in y_line
         assert "# another long inline comment" in content
@@ -1849,7 +1857,7 @@ class TestUndoAction:
 
         # block_total is never decremented by undo.
         assert state["block_total"] == 3
-        # Final decisions [a, s, s] → block_current ended at 3 (last prompt's
+        # Final decisions [a, s, s] -> block_current ended at 3 (last prompt's
         # increment).
         assert state["block_current"] == 3
 
@@ -1865,8 +1873,8 @@ class TestUndoAction:
     ):
         """Sequence ``a, A, u`` across files: the first paragraph is plainly accepted,
         the second paragraph is the A-press (auto-accepting the third), and ``u`` at the
-        next file's first prompt must pop the most recent decision — the A — rewinding
-        to *that* paragraph (not back to paragraph 1).
+        next file's first prompt must pop the most recent decision, the A, rewinding to
+        *that* paragraph (not back to paragraph 1).
 
         Pins down: ``u`` pops the latest decision regardless of position in the
         decision log, so the re-prompt lands on the A-position. Verified via the
@@ -1910,13 +1918,13 @@ class TestUndoAction:
 
         out = capsys.readouterr().out
         # Sequence of "Lines X-Y" markers in the captured diff output. We expect:
-        #   1. file1 paragraph 1 (Lines 1-2) — `a`
-        #   2. file1 paragraph 2 (Lines 4-5) — `A` (paragraph 3 auto-accepts silently)
-        #   3. file2 paragraph 1 (Lines 1-2) — `u` rewinds back into file 1
-        #   4. file1 paragraph 2 (Lines 4-5) — re-prompt at the A position
-        #   5. file1 paragraph 3 (Lines 7-8) — `s` (was auto-accepted; now re-prompts)
-        #   6. file2 paragraph 1 (Lines 1-2) — `s`
-        #   7. file2 paragraph 2 (Lines 4-5) — `s`
+        #   1. file1 paragraph 1 (Lines 1-2): `a`
+        #   2. file1 paragraph 2 (Lines 4-5): `A` (paragraph 3 auto-accepts silently)
+        #   3. file2 paragraph 1 (Lines 1-2): `u` rewinds back into file 1
+        #   4. file1 paragraph 2 (Lines 4-5): re-prompt at the A position
+        #   5. file1 paragraph 3 (Lines 7-8): `s` (was auto-accepted; now re-prompts)
+        #   6. file2 paragraph 1 (Lines 1-2): `s`
+        #   7. file2 paragraph 2 (Lines 4-5): `s`
         line_markers = re.findall(r"Lines (\d+-\d+)", out)
         assert line_markers == [
             "1-2",
@@ -1958,7 +1966,7 @@ class TestUndoAction:
 
         Regression: previously block_current was incremented only at the A prompt, so
         a file with N changed paragraphs where the user pressed A on the first prompt
-        finished with block_current=1 instead of N — and the indicator at the next
+        finished with block_current=1 instead of N, and the indicator at the next
         file's first prompt under-reported total progress by N-1.
         """
         f = tmp_path / "t.py"
@@ -1985,7 +1993,7 @@ class TestUndoAction:
 
         Two files, 3 changed paragraphs each (block_total=6). Press A on file 1's
         first prompt: 3 paragraphs of file 1 are processed (1 prompt + 2 auto-
-        accepts). The next prompt — file 2's first — should display [4/6], not
+        accepts). The next prompt, file 2's first, should display [4/6], not
         [2/6].
         """
         from octowrap.rewrap import _run_session
@@ -2017,7 +2025,7 @@ class TestUndoAction:
         )
 
         out = capsys.readouterr().out
-        # File 1 prompt 1 (the A): [1/6]. File 2 prompt 1: [4/6] — *not* [2/6].
+        # File 1 prompt 1 (the A): [1/6]. File 2 prompt 1: [4/6], *not* [2/6].
         assert "[1/6]" in out
         assert "[4/6]" in out
         assert "[2/6]" not in out, (
@@ -2032,7 +2040,7 @@ class TestUndoAction:
             b"x = 1  # this inline comment is way too long and definitely exceeds the"
             b" eighty-eight character line length limit set\n"
         )
-        # Two overflowing inline comments + one wrappable comment block — three changed
+        # Two overflowing inline comments + one wrappable comment block, three changed
         # paragraphs total. A on the first inline prompt auto-accepts the other two.
         f.write_bytes(
             inline_overflow
@@ -2166,8 +2174,8 @@ class TestUndoAction:
         assert state["decisions"][0].cursor[1] == "inline"
         assert len(state["decisions"][1].cursor) == 2
         assert len(state["decisions"][2].cursor) == 2
-        # Inline accepted → comment lifted above x = 1; paragraph 1 skipped → original
-        # preserved; paragraph 2 accepted → rewrapped to a single line.
+        # Inline accepted -> comment lifted above x = 1; paragraph 1 skipped -> original
+        # preserved; paragraph 2 accepted -> rewrapped to a single line.
         assert (
             "# This first comment block was wrapped\n# at a short width previously.\n"
             in content
@@ -2217,8 +2225,11 @@ class TestUndoAction:
     ):
         """When a file with an inline-extraction decision is undone and never re-walked
         (the user quits in a different file), the q-flush replays its loop in
-        ``replay_only`` mode — the un-decided inline cursor defaults to skip and the
-        original line is preserved on disk."""
+        ``replay_only`` mode.
+
+        The un-decided inline cursor defaults to skip and the original line is preserved
+        on disk.
+        """
         from octowrap.rewrap import _run_session
 
         a = tmp_path / "a.py"
@@ -2231,8 +2242,8 @@ class TestUndoAction:
         a.write_bytes(inline_overflow)
         b.write_bytes(inline_overflow)
         c.write_bytes(inline_overflow)
-        # A: a (written). B: a (written). C: u (pops B → B dirty). B re-prompt: u (pops
-        # A → A dirty). A re-prompt: q.
+        # A: a (written). B: a (written). C: u (pops B -> B dirty). B re-prompt: u (pops
+        # A -> A dirty). A re-prompt: q.
         responses = iter(["a", "a", "u", "u", "q"])
         monkeypatch.setattr(
             "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
@@ -2273,7 +2284,7 @@ class TestUndoAction:
         silently break this case.
         """
         f = tmp_path / "t.py"
-        # Four wrappable prose paragraphs separated by blank `#` lines — all the same
+        # Four wrappable prose paragraphs separated by blank `#` lines, all the same
         # indent, so parse_comment_blocks produces a single block with four wrap units
         # at raw_start 0, 3, 6, 9.
         # fmt: off
@@ -2308,8 +2319,8 @@ class TestUndoAction:
         cursors = [d.cursor for d in state["decisions"]]
         assert cursors == [(0, 0), (0, 3), (0, 6), (0, 9)]
 
-        # p1's pragmas were re-emitted on replay — the excluded paragraph is bracketed
-        # by exactly one off/on pair and its original two lines are preserved verbatim
+        # p1's pragmas were re-emitted on replay. The excluded paragraph is bracketed by
+        # exactly one off/on pair and its original two lines are preserved verbatim
         # between them.
         lines = content.splitlines()
         off_idx = lines.index("# octowrap: off")
@@ -2320,9 +2331,9 @@ class TestUndoAction:
         ]
         assert content.count("# octowrap: off") == 1
         assert content.count("# octowrap: on") == 1
-        # p2's `a` was replayed → joined onto a single line.
+        # p2's `a` was replayed -> joined onto a single line.
         assert "# This is paragraph 2 that was wrapped at a short width." in content
-        # p3 was re-decided as skip → still its original two-line form.
+        # p3 was re-decided as skip -> still its original two-line form.
         assert "# This is paragraph 3 that was wrapped\n# at a short width." in content
-        # p4's new `a` decision applied → single-line rewrap.
+        # p4's new `a` decision applied -> single-line rewrap.
         assert "# This is paragraph 4 that was wrapped at a short width." in content

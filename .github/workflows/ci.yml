@@ -38,6 +38,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v8.1.0
         with:
+          # noinspection UndefinedParamsPresent
           python-version: "3.13"
 
       - name: Install development dependencies

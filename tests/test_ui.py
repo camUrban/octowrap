@@ -226,7 +226,10 @@ class TestPromptUser:
         assert prompt_user(can_undo=True) == "u"
 
     def test_undo_rejected_when_cannot_undo(self, monkeypatch):
-        """Pressing 'u' when can_undo=False is silently ignored — the prompt loops."""
+        """Pressing 'u' when can_undo=False is silently ignored.
+
+        The prompt loops.
+        """
         responses = iter(["u", "u", "a"])
         monkeypatch.setattr(mod, "_getch", lambda: next(responses))
         assert prompt_user(can_undo=False) == "a"
@@ -311,9 +314,10 @@ class TestGetchEscapeSequences:
 
         timeouts = []
 
+        # noinspection PyUnusedLocal
         def fake_select(rlist, wlist, xlist, timeout):
             timeouts.append(timeout)
-            return ([], [], [])
+            return [], [], []
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
         monkeypatch.setattr(os, "read", lambda fd, n: b"\x1b")
@@ -367,6 +371,7 @@ class TestGetchEscapeSequences:
         import termios
         import tty
 
+        # noinspection PyUnusedLocal
         def fake_read(fd, n):
             raise OSError("interrupted")
 
@@ -483,6 +488,7 @@ class TestGetchEscapeSequences:
 
         reads = iter([b"\x1b", OSError("interrupted")])
 
+        # noinspection PyUnusedLocal
         def fake_read(fd, n):
             value = next(reads)
             if isinstance(value, OSError):
@@ -553,8 +559,8 @@ class TestGetchEscapeSequences:
         select-based drain (which only sees the OS fd) couldn't reach them.  Result: the
         next prompt would echo '[' (ignored) and then 'A' (misread as accept-all).
 
-        This test wires _getch up to a real pipe pre-loaded with all 3 bytes — the exact
-        condition that triggered the bug — and checks that _getch consumes the whole
+        This test wires _getch up to a real pipe pre-loaded with all 3 bytes (the exact
+        condition that triggered the bug) and checks that _getch consumes the whole
         sequence and leaves the pipe empty.
         """
         import os
@@ -577,7 +583,7 @@ class TestGetchEscapeSequences:
             assert _getch() == "", "up arrow must collapse to '' (no leftover key)"
 
             # The pipe must be empty: any leftover byte would resurface as a bogus
-            # keypress in the next prompt iteration — exactly the original bug.
+            # keypress in the next prompt iteration (exactly the original bug).
             import select as _sel
 
             ready, _, _ = _sel.select([r_fd], [], [], 0)

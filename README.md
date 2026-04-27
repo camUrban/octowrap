@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
 [![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
 
-Rewrap Python `#` comments to a line length you choose — without touching commented-out code, section dividers, TODO/FIXME markers, or tool directives.
+Rewrap Python `#` comments to a line length you choose without touching commented-out code, section dividers, TODO/FIXME markers, or tool directives.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/camUrban/octowrap/main/docs/hero/demo.svg" alt="Animated terminal demo of `octowrap -i` reviewing three comment changes in a small Python file: a long prose comment, a TODO marker, and an overflowing inline comment. Each diff appears in red/green and is accepted with a single keystroke." width="840">
@@ -20,13 +20,13 @@ Rewrap Python `#` comments to a line length you choose — without touching comm
 - Heals erroneous spaces at bracket boundaries on rewrap (e.g. `( text)` -> `(text)`, `text )` -> `text)`)
 - Preserves commented-out Python code (detected via 21 heuristic patterns with a prose disqualifier to avoid false positives on natural English)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
-- Preserves section headers (`# === Title ===`, `# --- Title ---`, `# ### Title ###`, `# *** Title ***`, `# ___ Title ___`) — same delimiter character on both sides, three or more per side, asymmetric counts allowed
+- Preserves section headers (`# === Title ===`, `# --- Title ---`, `# ### Title ###`, `# *** Title ***`, `# ___ Title ___`): same delimiter character on both sides, three or more per side, asymmetric counts allowed
 - Rewraps list items (bullets, numbered, lettered) with hanging indent aligned to the text after the marker; collects continuation lines and handles nesting naturally. Disable with `list-wrap = false`.
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
 - Extracts overflowing inline comments (`code  # comment`) into standalone block comments above the code line when the line exceeds the line length, then wraps them normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline`.
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, `noinspection`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
-- Applies changes automatically by default, or use `-i` for interactive per-paragraph approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining paragraphs in the file, `e` exclude, `f` flag, `s` skip, `u` undo, `q` quit). A single comment block that mixes prose, a TODO, and a tool directive reviews as separate diffs — one per changed paragraph — so you can see exactly what's changing. Consecutive list items group into a single prompt. Flagging wraps the paragraph with a FIXME marker and `# octowrap: off` / `# octowrap: on` pragmas so reruns skip it. Undo pops the most recent decision and re-prompts at that position; it works across files (a previously-written file is reverted on disk lazily — at quit or on the next walk-through). Quitting stops all processing, including remaining files; on quit, every file on disk is reconciled with the final decision log so undone writes are reverted.
+- Applies changes automatically by default, or use `-i` for interactive per-paragraph approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining paragraphs in the file, `e` exclude, `f` flag, `s` skip, `u` undo, `q` quit). A single comment block that mixes prose, a TODO, and a tool directive reviews as separate diffs so you can see exactly what's changing. Consecutive list items group into a single prompt. Flagging wraps the paragraph with a FIXME marker and `# octowrap: off` / `# octowrap: on` pragmas so reruns skip it. Undo pops the most recent decision and re-prompts at that position; it works across files (a previously-written file is reverted on disk lazily at quit or on the next walk-through). Quitting stops all processing, including remaining files; on quit, every file on disk is reconciled with the final decision log so undone writes are reverted.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss
@@ -68,7 +68,7 @@ cat file.py | octowrap - --stdin-filename src/app.py --diff
 
 Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode). `--stdin-filename` requires `-` and must end in `.py`.
 
-> **Heads up:** in bare stdin mode (`octowrap -` without `--stdin-filename`), octowrap has no way to tell what kind of content is being piped in and will rewrap it as Python comments regardless. Unlike formatters that parse to an AST, octowrap operates lexically on `#`-prefixed lines, so it will happily produce plausible-looking but wrong output from a Markdown file. The caller is responsible for ensuring only Python source flows in — editor integrations should gate on filetype, and shell pipelines should filter for `.py` before piping.
+> **Heads up:** in bare stdin mode (`octowrap -` without `--stdin-filename`), octowrap has no way to tell what kind of content is being piped in and will rewrap it as Python comments regardless. Unlike formatters that parse to an AST, octowrap operates lexically on `#`-prefixed lines, so it will happily produce plausible-looking but wrong output from a Markdown file. The caller is responsible for ensuring only Python source flows in. Editor integrations should gate on filetype, and shell pipelines should filter for `.py` before piping.
 
 ### Example
 
@@ -161,7 +161,7 @@ After (`--line-length 72`):
 #    and needs to be wrapped properly.
 ```
 
-Nesting is handled naturally — each item wraps independently at its own indent level:
+Nesting is handled naturally. Each item wraps independently at its own indent level:
 
 ```python
 # - Top-level item
@@ -318,20 +318,20 @@ exclude = ["migrations", "generated"]
 extend-exclude = ["vendor"]
 ```
 
-| Key                    | Type      | Default             | CLI equivalent   |
-|------------------------|-----------|---------------------|------------------|
-| `line-length`          | int       | 88                  | `--line-length`  |
-| `recursive`            | bool      | true                | `--no-recursive` |
-| `inline`               | bool      | true                | `--no-inline`    |
-| `list-wrap`            | bool      | true                | —                |
-| `diff-only`            | bool      | false               | `--diff-only`    |
-| `diff-base`            | str       | `"HEAD"`            | `--diff-base`    |
-| `exclude`              | list[str] | —                   | —                |
-| `extend-exclude`       | list[str] | —                   | —                |
-| `todo-patterns`        | list[str] | `["todo", "fixme"]` | —                |
-| `extend-todo-patterns` | list[str] | —                   | —                |
-| `todo-case-sensitive`  | bool      | false               | —                |
-| `todo-multiline`       | bool      | true                | —                |
+| Key                    | Type      | Default              | CLI equivalent   |
+|------------------------|-----------|----------------------|------------------|
+| `line-length`          | int       | 88                   | `--line-length`  |
+| `recursive`            | bool      | true                 | `--no-recursive` |
+| `inline`               | bool      | true                 | `--no-inline`    |
+| `list-wrap`            | bool      | true                 | n/a              |
+| `diff-only`            | bool      | false                | `--diff-only`    |
+| `diff-base`            | str       | `"HEAD"`             | `--diff-base`    |
+| `exclude`              | list[str] | (built-in list)      | n/a              |
+| `extend-exclude`       | list[str] | `[]`                 | n/a              |
+| `todo-patterns`        | list[str] | `["todo", "fixme"]`  | n/a              |
+| `extend-todo-patterns` | list[str] | `[]`                 | n/a              |
+| `todo-case-sensitive`  | bool      | false                | n/a              |
+| `todo-multiline`       | bool      | true                 | n/a              |
 
 CLI flags always take precedence over config values. Use `--config PATH` to point to a specific `pyproject.toml` instead of relying on auto-discovery.
 

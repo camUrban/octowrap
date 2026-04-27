@@ -1,4 +1,4 @@
-"""Tests for octowrap.diff — unified diff parsing and git integration."""
+"""Tests for octowrap.diff: unified diff parsing and git integration."""
 
 import shutil
 import subprocess
@@ -140,6 +140,7 @@ class TestGetRepoRoot:
     def test_returns_none_outside_git_repo(self, monkeypatch):
         """Returns None when not inside a git repository."""
 
+        # noinspection PyUnusedLocal
         def _fail(*args, **kwargs):
             raise subprocess.CalledProcessError(128, "git")
 
@@ -149,6 +150,7 @@ class TestGetRepoRoot:
     def test_returns_none_when_git_not_installed(self, monkeypatch):
         """Returns None when git is not installed."""
 
+        # noinspection PyUnusedLocal
         def _fail(*args, **kwargs):
             raise FileNotFoundError("git")
 
@@ -159,10 +161,12 @@ class TestGetRepoRoot:
 class TestGetChangedLines:
     """Tests for get_changed_lines()."""
 
-    def _mock_subprocess(self, monkeypatch, repo_root, diff_stdout):
+    @staticmethod
+    def _mock_subprocess(monkeypatch, repo_root, diff_stdout):
         """Set up monkeypatches for both git rev-parse and git diff calls."""
         calls = []
 
+        # noinspection PyUnusedLocal
         def _fake_run(cmd, **kwargs):
             calls.append(cmd)
             if "rev-parse" in cmd:
@@ -205,6 +209,7 @@ class TestGetChangedLines:
     def test_not_a_git_repo(self, monkeypatch):
         """Raises NotAGitRepoError when not in a git repository."""
 
+        # noinspection PyUnusedLocal
         def _fail(*args, **kwargs):
             raise subprocess.CalledProcessError(128, "git")
 
@@ -215,6 +220,7 @@ class TestGetChangedLines:
     def test_git_not_installed(self, monkeypatch):
         """Raises NotAGitRepoError when git is not installed."""
 
+        # noinspection PyUnusedLocal
         def _fail(*args, **kwargs):
             raise FileNotFoundError("git")
 
@@ -223,6 +229,7 @@ class TestGetChangedLines:
             get_changed_lines()
 
 
+# noinspection PyDeprecation
 @pytest.mark.skipif(shutil.which("git") is None, reason="git not available")
 class TestGetChangedLinesIntegration:
     """Integration tests using real git repos in tmp_path."""
