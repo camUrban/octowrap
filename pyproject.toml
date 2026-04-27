@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "octowrap"
-version = "0.6.0"
+version = "0.6.1"
 description = "Rewrap Python # comments to a specified line length"
 requires-python = ">=3.11"
 dependencies = []
@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "codespell>=2.4.0",
     "docformatter>=1.7.0",

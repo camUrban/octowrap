@@ -90,10 +90,10 @@ def _looks_like_prose(text: str) -> bool:
     lower = text.strip().lower()
     determiners = r"(?:the|this|that|these|those)"
     keywords = r"(?:if|while|with|return|raise|import|assert|yield)"
-    # keyword + determiner + word  (e.g. "if the server …")
+    # keyword + determiner + word  (e.g. "if the server ...")
     if re.match(rf"{keywords}\s+{determiners}\s+[a-z]", lower):
         return True
-    # "return to …"  (e.g. "return to the caller")
+    # "return to ..."  (e.g. "return to the caller")
     if re.match(r"return\s+to\s+", lower):
         return True
     return False
@@ -221,7 +221,7 @@ def find_inline_comment(line: str) -> int | None:
         ch = line[i]
 
         if in_string is not None:
-            # Inside a string literal — look for the closing delimiter or escape.
+            # Inside a string literal. Look for the closing delimiter or escape.
             if ch == "\\" and i + 1 < length:
                 i += 2  # skip escaped character
                 continue
@@ -316,8 +316,8 @@ def extract_todo_marker(
     # noinspection GrazieInspection
     """Extract the marker prefix and remaining content from a TODO line.
 
-    Returns ``(marker_prefix, content)`` — e.g. ``("TODO: ", "fix the bug")``. If *text*
-    does not match any pattern, returns ``("", text)``.
+    Returns ``(marker_prefix, content)``, e.g. ``("TODO: ", "fix the bug")``. If
+    ``text`` does not match any pattern, returns ``("", text)``.
     """
     if patterns is None:
         patterns = DEFAULT_TODO_PATTERNS
@@ -335,9 +335,9 @@ def extract_todo_marker(
 def extract_list_marker(text: str) -> tuple[str, str]:
     """Extract list marker prefix and remaining content.
 
-    Returns ``(marker_prefix, content)`` — e.g. ``("- ", "fix the bug")`` or
-    ``("  1. ", "first item")``.  The *marker_prefix* includes any leading whitespace
-    (nesting indent).  Returns ``("", text)`` on no match.
+    Returns ``(marker_prefix, content)``, e.g. ``("- ", "fix the bug")`` or
+    ``("  1. ", "first item")``.  The ``marker_prefix`` includes any leading
+    whitespace (nesting indent).  Returns ``("", text)`` on no match.
     """
     list_patterns = [
         r"^(\s*[-*•]\s+)(.*)",  # bullet points
@@ -516,7 +516,7 @@ def _split_paragraphs(
                 if not next_content.strip():
                     break
                 if is_list_item(next_content):
-                    break  # sibling or nested item — its own paragraph
+                    break  # A sibling or nested item (its own paragraph).
                 if (
                     should_preserve_line(next_content)
                     or is_tool_directive(next_content)
@@ -762,7 +762,7 @@ def compute_comment_positions(content: str) -> set[tuple[int, int]] | None:
     """Return ``(lineno, col)`` positions of ``#`` characters that start real comments.
 
     *lineno* is 1-indexed and *col* is 0-indexed, matching ``tokenize`` semantics.
-    Returns ``None`` when *content* is not valid Python — callers should fall back to
+    Returns ``None`` when *content* is not valid Python. Callers should fall back to
     string-scanning heuristics (which cannot distinguish a ``#`` inside a multi-line
     string from a real comment) in that case.
     """
@@ -882,6 +882,53 @@ def count_changed_blocks(
     return count
 
 
+def _record_a_extras(
+    _state: dict | None,
+    content: str,
+    filepath: str,
+    cursor: tuple,
+    max_line_length: int,
+    *,
+    todo_patterns: list[str] | None,
+    todo_case_sensitive: bool,
+    todo_multiline: bool,
+    inline: bool,
+    list_wrap: bool,
+    changed_lines: set[int] | None,
+) -> None:
+    """Record how many remaining changed paragraphs in *filepath* will be auto-accepted
+    under this A decision, so the [X/Y] indicator reflects them.
+
+    Idempotent: re-entry of a file (e.g. after undo of a later decision) replays
+    the A and would otherwise overwrite or double-count. We compute the count once,
+    on the first time A is pressed for this cursor, by subtracting the number of
+    decisions already recorded for this file (which includes the just-appended A
+    itself) from the total changed-paragraph count for the file.
+    """
+    if _state is None or "block_total" not in _state or "decisions" not in _state:
+        return
+    a_extras = _state.setdefault("a_extras", {})
+    key = (filepath, cursor)
+    if key in a_extras:
+        # Defensive: re-traversal of the file containing A is only reached via undo, and
+        # undo of A clears its a_extras entry before re-entry, so this branch is not
+        # exercised in current flow.  Kept to make the helper safely idempotent for
+        # future callers.
+        return  # pragma: no cover
+    total_in_file = count_changed_blocks(
+        content,
+        max_line_length,
+        todo_patterns=todo_patterns,
+        todo_case_sensitive=todo_case_sensitive,
+        todo_multiline=todo_multiline,
+        inline=inline,
+        list_wrap=list_wrap,
+        changed_lines=changed_lines,
+    )
+    decisions_for_file = sum(1 for d in _state["decisions"] if d.filepath == filepath)
+    a_extras[key] = max(0, total_in_file - decisions_for_file)
+
+
 _USE_COLOR: bool = True
 
 
@@ -908,10 +955,15 @@ def show_block_diff(
     start_line: int,
     filepath: str = "",
     progress: str = "",
+    divider_width: int = 88,
 ) -> bool:
     """Display a diff for a single comment block.
 
     Returns True if there are changes, False otherwise.
+
+    *divider_width* sets the character width of the top and bottom dividers.
+    Callers typically pass ``max_line_length + 2`` so the rule extends past the
+    two-character ``- `` / ``+ `` diff prefix and visually frames the wrap target.
     """
     if original_lines == new_lines:
         return False
@@ -924,14 +976,14 @@ def show_block_diff(
     if progress:
         header += " " + colorize(progress, "cyan")
     print(f"\n{header}")
-    print(colorize("─" * 60, "cyan"))
+    print(colorize("─" * divider_width, "cyan"))
 
     for line in original_lines:
         print(colorize(f"- {line}", "red"))
     for line in new_lines:
         print(colorize(f"+ {line}", "green"))
 
-    print(colorize("─" * 60, "cyan"))
+    print(colorize("─" * divider_width, "cyan"))
     return True
 
 
@@ -947,6 +999,15 @@ def _getch() -> str:
 
     Uses platform specific APIs (msvcrt on Windows, termios/tty/select on
     Unix), imported locally to avoid cross-platform resolution issues.
+
+    On Unix, reads go through ``os.read`` on the raw stdin file descriptor
+    rather than ``sys.stdin.read``.  ``sys.stdin`` is a buffered TextIOWrapper
+    that may pre-fetch additional bytes from the kernel pipe on the first
+    read; if it does, those bytes sit in Python's buffer where neither
+    ``select.select`` nor ``termios.tcflush`` can see them, and the next
+    ``read`` would surface them as bogus keypresses (e.g. the ``A`` in an up
+    arrow's ``\\x1b[A`` being misread as ``accept all``).  Using ``os.read``
+    keeps every byte at the OS layer where the drain logic can reach it.
     """
     if sys.platform == "win32":
         import msvcrt
@@ -973,21 +1034,26 @@ def _getch() -> str:
     try:
         tty.setcbreak(fd)
         try:
-            ch = sys.stdin.read(1)
-        except UnicodeDecodeError:
-            ch = ""
+            data = os.read(fd, 1)
+        except OSError:
+            return ""
+        if not data:
+            return ""
+        ch = data.decode("utf-8", errors="replace")
         if ch == "\x1b":
             # Drain the rest of the escape sequence.  A small timeout (rather than a
             # non-blocking peek) catches tails that arrive a few milliseconds late over
             # slow terminals or SSH; matches ncurses' ESCDELAY convention.
             while select.select([fd], [], [], 0.05)[0]:
                 try:
-                    sys.stdin.read(1)
-                except UnicodeDecodeError:
-                    pass
-            ch = ""
-        # Drain anything else queued behind this keypress so a paste's trailing bytes
-        # don't bleed into the next prompt.
+                    if not os.read(fd, 64):
+                        break
+                except OSError:
+                    break
+            return ""
+        # Drain anything else queued behind this keypress (paste tail, type-ahead) so it
+        # doesn't bleed into the next prompt.  tcflush operates on the kernel queue,
+        # which is where os.read leaves any unread bytes.
         termios.tcflush(fd, termios.TCIFLUSH)
         return ch
     finally:
@@ -1004,11 +1070,11 @@ def prompt_user(can_undo: bool = True) -> str:
     When *can_undo* is False, ``[u]ndo`` is omitted from the rendered prompt
     and ``u`` keypresses are silently rejected (the prompt re-displays).
     Callers should pass ``can_undo=False`` when there are no decisions to
-    pop — typically the very first prompt of a session.
+    pop (typically the very first prompt of a session).
     """
     parts = [
         f"[{colorize('a', 'green')}]ccept",
-        f"accept [{colorize('A', 'green')}]ll",
+        f"[{colorize('A', 'green')}]ccept all (current file)",
         f"[{colorize('e', 'cyan')}]xclude",
         f"[{colorize('f', 'magenta')}]lag",
         f"[{colorize('s', 'yellow')}]kip",
@@ -1071,7 +1137,7 @@ def process_content(
     preserved verbatim.
 
     When *decisions* is provided, each ``Decision``'s recorded action is replayed
-    silently when its cursor is encountered during iteration — ``prompt_user()`` is
+    silently when its cursor is encountered during iteration; ``prompt_user()`` is
     skipped. The cursor at *rewind_to_cursor* (if any) is the exception: that
     position is always prompted, even if a decision exists for it. This is how
     Phase 4's undo feature re-enters mid-file at the popped position.
@@ -1093,11 +1159,21 @@ def process_content(
         {d.cursor: d.action for d in decisions} if decisions else {}
     )
 
-    # Recompute block_current from the session-wide decisions length so the progress
-    # indicator [X/Y] rolls back correctly after undo. The prompt branch increments this
-    # counter from the new baseline.
+    # Recompute block_current so the progress indicator [X/Y] rolls back correctly after
+    # undo. Each Decision contributes one bump (the prompt where it was made);
+    # additionally, an "A" (accept-all) decision auto-accepts every subsequent changed
+    # paragraph in its file without prompting, and those silent paragraphs also count
+    # toward [X/Y]. Their per-A count is recorded in _state["a_extras"] at the time A is
+    # pressed and re-summed here on every file entry so the indicator stays correct as
+    # files come and go from the active set.
     if _state is not None and "block_total" in _state and "decisions" in _state:
-        _state["block_current"] = len(_state["decisions"])
+        a_extras = _state.get("a_extras", {})
+        extras_sum = sum(
+            a_extras.get((d.filepath, d.cursor), 0)
+            for d in _state["decisions"]
+            if d.action == "A"
+        )
+        _state["block_current"] = len(_state["decisions"]) + extras_sum
 
     new_lines = []
     user_quit = False
@@ -1184,7 +1260,7 @@ def process_content(
                         # or showing a diff.
                         action = decisions_by_cursor[cursor]
                     elif replay_only:
-                        # Un-decided cursor in replay_only mode → default to skip
+                        # Un-decided cursor in replay_only mode -> default to skip
                         # (preserve the original line).
                         new_lines.append(line)
                         line_idx += 1
@@ -1207,6 +1283,7 @@ def process_content(
                             block["start_idx"] + line_idx,
                             filepath=filepath,
                             progress=progress,
+                            divider_width=max_line_length + 2,
                         )
                         if not has_changes:
                             # Defensive: inline extraction always changes the line count
@@ -1223,6 +1300,10 @@ def process_content(
                             # cursor.
                             assert _state is not None  # can_undo guarantees this
                             popped = _state["decisions"].pop()
+                            if popped.action == "A":
+                                _state.get("a_extras", {}).pop(
+                                    (popped.filepath, popped.cursor), None
+                                )
                             _state["rewind_target"] = popped
                             if popped.filepath in _state["last_written"]:
                                 _state["dirty"].add(popped.filepath)
@@ -1239,6 +1320,19 @@ def process_content(
                     if action == "A":
                         accept_all = True
                         new_lines.extend(replacement)
+                        _record_a_extras(
+                            _state,
+                            content,
+                            filepath,
+                            cursor,
+                            max_line_length,
+                            todo_patterns=todo_patterns,
+                            todo_case_sensitive=todo_case_sensitive,
+                            todo_multiline=todo_multiline,
+                            inline=inline,
+                            list_wrap=list_wrap,
+                            changed_lines=changed_lines,
+                        )
                     elif action == "a":
                         new_lines.extend(replacement)
                     elif action == "e":
@@ -1386,7 +1480,7 @@ def process_content(
                 unit_idx += 1
                 continue
             if original == rewrapped:
-                # Unchanged paragraph — pass through silently, no prompt.
+                # Unchanged paragraph: pass through silently, no prompt.
                 new_lines.extend(original)
                 unit_idx += 1
                 continue
@@ -1396,7 +1490,7 @@ def process_content(
                 # Replay: apply the recorded action without prompting or showing a diff.
                 action = decisions_by_cursor[cursor]
             elif replay_only:
-                # Un-decided paragraph in replay_only mode → default to skip (preserve
+                # Un-decided paragraph in replay_only mode -> default to skip (preserve
                 # the original lines).
                 new_lines.extend(original)
                 unit_idx += 1
@@ -1417,6 +1511,7 @@ def process_content(
                     block["start_idx"] + unit["raw_start"],
                     filepath=filepath,
                     progress=progress,
+                    divider_width=max_line_length + 2,
                 )
 
                 can_undo = bool(_state is not None and _state.get("decisions"))
@@ -1426,6 +1521,10 @@ def process_content(
                     # exit. The session driver will re-enter at the popped cursor.
                     assert _state is not None  # can_undo guarantees this
                     popped = _state["decisions"].pop()
+                    if popped.action == "A":
+                        _state.get("a_extras", {}).pop(
+                            (popped.filepath, popped.cursor), None
+                        )
                     _state["rewind_target"] = popped
                     if popped.filepath in _state["last_written"]:
                         _state["dirty"].add(popped.filepath)
@@ -1436,6 +1535,19 @@ def process_content(
             if action == "A":
                 accept_all = True
                 new_lines.extend(rewrapped)
+                _record_a_extras(
+                    _state,
+                    content,
+                    filepath,
+                    cursor,
+                    max_line_length,
+                    todo_patterns=todo_patterns,
+                    todo_case_sensitive=todo_case_sensitive,
+                    todo_multiline=todo_multiline,
+                    inline=inline,
+                    list_wrap=list_wrap,
+                    changed_lines=changed_lines,
+                )
             elif action == "a":
                 new_lines.extend(rewrapped)
             elif action == "e":
@@ -1531,7 +1643,7 @@ def _drive_file(
     """Read *filepath* and run ``process_content``; no file writes.
 
     Pure read + transform; the caller decides whether to persist. Returns
-    ``(changed, new_content)`` — the third element of ``process_content``'s
+    ``(changed, new_content)``. The third element of ``process_content``'s
     return (``status``) is dropped because the non-interactive path always
     completes normally.
     """
@@ -1557,7 +1669,7 @@ def _drive_file(
 def _init_session_state(state: dict | None) -> dict:
     """Ensure *state* has every session-driver key initialized; return it.
 
-    Idempotent — passing a partially-populated dict (e.g. one that already has
+    Idempotent: passing a partially-populated dict (e.g. one that already has
     ``decisions``) preserves existing values and only fills in the missing
     keys.
     """
@@ -1568,6 +1680,7 @@ def _init_session_state(state: dict | None) -> dict:
     state.setdefault("last_written", {})
     state.setdefault("dirty", set())
     state.setdefault("rewind_target", None)
+    state.setdefault("a_extras", {})
     return state
 
 
@@ -1593,8 +1706,8 @@ def _flush_dirty_at_quit(
 
     Dirty membership is the right scope: non-interactive runs never mark
     files dirty, so this is a no-op for them. For interactive runs, only
-    files that have a meaningful pending reconciliation get rewritten —
-    files that completed cleanly are already consistent with their log.
+    files that have a meaningful pending reconciliation get rewritten.
+    Files that completed cleanly are already consistent with their log.
     """
     if dry_run:
         return
@@ -2001,6 +2114,14 @@ def main():
         )
         raise SystemExit(1)
 
+    if args.stdin_filename is not None and args.stdin_filename.suffix != ".py":
+        print(
+            f"octowrap: error: --stdin-filename {args.stdin_filename} is not a "
+            "Python file",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     if stdin_mode:
         if len(args.paths) > 1:
             print(
@@ -2053,7 +2174,10 @@ def main():
     files_to_process = []
     for path in args.paths:
         if path.is_file():
-            files_to_process.append(path)
+            if path.suffix != ".py":
+                print(f"Warning: {path} is not a Python file, skipping")
+            else:
+                files_to_process.append(path)
         elif path.is_dir():
             if args.recursive:
                 files_to_process.extend(
@@ -2072,6 +2196,7 @@ def main():
     all_changed_lines: dict[str, set[int]] | None = None
     repo_root: Path | None = None
     if diff_only:
+        # noinspection PyDeprecation
         if shutil.which("git") is None:
             print(
                 "octowrap: error: --diff-only requires git (not found on PATH)",
@@ -2094,15 +2219,15 @@ def main():
             )
             raise SystemExit(1)
 
-    def _file_changed_lines(filepath: Path) -> set[int] | None:
-        """Look up the changed lines for *filepath*, or None if not filtering."""
+    def _file_changed_lines(this_filepath: Path) -> set[int] | None:
+        """Look up the changed lines for *this_filepath*, or None if not filtering."""
         if all_changed_lines is None:
             return None
         assert repo_root is not None
         try:
-            rel_path = filepath.resolve().relative_to(repo_root).as_posix()
+            rel_path = this_filepath.resolve().relative_to(repo_root).as_posix()
         except ValueError:
-            rel_path = str(filepath)
+            rel_path = str(this_filepath)
         return all_changed_lines.get(rel_path, set())
 
     changed_count = 0

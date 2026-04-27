@@ -87,6 +87,16 @@ class TestMain:
         out = capsys.readouterr().out
         assert "not found, skipping" in out
 
+    def test_explicit_non_python_file_warns(self, tmp_path, monkeypatch, capsys):
+        md = tmp_path / "README.md"
+        md.write_text("# Heading\n\nProse that should never be touched.\n")
+        original = md.read_text()
+        monkeypatch.setattr("sys.argv", ["octowrap", str(md)])
+        main()
+        out = capsys.readouterr().out
+        assert "is not a Python file, skipping" in out
+        assert md.read_text() == original
+
     def test_directory_non_recursive(self, tmp_path, monkeypatch, capsys):
         """With --no-recursive, only top level .py files are processed."""
         (tmp_path / "top.py").write_bytes(WRAPPABLE_CONTENT)
@@ -320,7 +330,7 @@ class TestConfigIntegration:
         main()
         content = f.read_text()
         lines = content.splitlines()
-        # TODO should NOT be treated as a marker — continuation lines should use
+        # TODO should NOT be treated as a marker. The continuation lines should use
         # prose style ("# ") not TODO continuation style ("#  ")
         assert len(lines) > 2  # Should be rewrapped across multiple lines
         assert lines[1].startswith("# ") and not lines[1].startswith("#  ")
@@ -713,6 +723,16 @@ class TestStdinFilename:
         err = capsys.readouterr().err
         assert "--stdin-filename requires" in err
 
+    def test_stdin_filename_non_python_errors(self, monkeypatch, capsys):
+        """--stdin-filename with a non-.py suffix prints an error and exits 1."""
+        monkeypatch.setattr(
+            "sys.argv", ["octowrap", "--stdin-filename", "README.md", "-"]
+        )
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "is not a Python file" in err
+
     def test_stdin_filename_config_discovery(self, tmp_path, monkeypatch, capsys):
         """Config is discovered from --stdin-filename's parent, not CWD."""
         # Create a pyproject.toml in a subdirectory with a short line-length
@@ -873,7 +893,7 @@ class TestInteractiveProgress:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         main()
         out = capsys.readouterr().out
-        # Two changed paragraphs in one block → [1/2] and [2/2].
+        # Two changed paragraphs in one block -> [1/2] and [2/2].
         assert "[1/2]" in out
         assert "[2/2]" in out
 
@@ -1210,7 +1230,7 @@ class TestDiffOnly:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", counting_prompt)
         monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", "-i", str(f)])
         main()
-        # Only the second block overlaps — one prompt
+        # Only the second block overlaps.
         assert call_count == 1
 
     def test_diff_only_path_resolution(self, tmp_path, monkeypatch, capsys):
@@ -1236,6 +1256,7 @@ class TestDiffOnly:
         f.write_bytes(b"x = 1\n")
         monkeypatch.setattr("octowrap.rewrap.get_repo_root", lambda: tmp_path)
 
+        # noinspection PyUnusedLocal
         def _fail(base="HEAD"):
             raise NotAGitRepoError("bad ref")
 

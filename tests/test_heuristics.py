@@ -437,7 +437,10 @@ class TestIsTodoMarker:
         assert is_todo_marker("test: Add tests", patterns=["TEST:"])
 
     def test_pattern_with_trailing_colon_no_false_prefix(self):
-        """'TEST:' pattern should not match 'TESTING:' — the colon anchors it."""
+        """'TEST:' pattern should not match 'TESTING:'.
+
+        The colon anchors it.
+        """
         assert not is_todo_marker("TESTING: something", patterns=["TEST:"])
 
 

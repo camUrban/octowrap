@@ -335,7 +335,7 @@ class TestMultilineStringHash:
 
     def test_syntax_error_falls_back(self):
         """When tokenize fails, processing falls back to the regex heuristic."""
-        # Unclosed string — tokenize raises, compute_comment_positions returns None.
+        # Unclosed string, tokenize raises, and compute_comment_positions returns None.
         content = 'x = "unterminated\ny = 1  # a short comment\n'
         # Must not raise; behavior falls back to current scanning.
         _, new_content, _ = process_content(content, max_line_length=88)

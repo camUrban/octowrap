@@ -92,7 +92,7 @@ class TestSectionHeader:
         assert not is_section_header(" Title ===")
 
     def test_pure_divider_rejected(self):
-        # Title is all delimiter chars — that's a divider, not a header.
+        # Title is all delimiter chars. That's a divider, not a header.
         assert not is_section_header(" === === ===")
 
     def test_section_header_preserved_verbatim(self):
@@ -488,7 +488,7 @@ class TestTodoRewrap:
         result = rewrap_comment_block(
             block, max_line_length=88, todo_case_sensitive=True
         )
-        # 'todo' should not be treated as a marker — it becomes regular prose
+        # 'todo' should not be treated as a marker. It becomes regular prose
         assert result[0].startswith("# todo: ")
         # No continuation indent (it's wrapped as regular prose)
         for line in result:
