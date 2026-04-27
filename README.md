@@ -67,7 +67,9 @@ Use `--stdin-filename` to provide the original file path for config discovery an
 cat file.py | octowrap - --stdin-filename src/app.py --diff
 ```
 
-Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode). `--stdin-filename` requires `-`.
+Note: `-` cannot be mixed with other paths and is incompatible with `-i` (interactive mode). `--stdin-filename` requires `-` and must end in `.py`.
+
+> **Heads up:** in bare stdin mode (`octowrap -` without `--stdin-filename`), octowrap has no way to tell what kind of content is being piped in and will rewrap it as Python comments regardless. Unlike formatters that parse to an AST, octowrap operates lexically on `#`-prefixed lines, so it will happily produce plausible-looking but wrong output from a Markdown file. The caller is responsible for ensuring only Python source flows in — editor integrations should gate on filetype, and shell pipelines should filter for `.py` before piping.
 
 ### Example
 

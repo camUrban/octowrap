@@ -2114,6 +2114,14 @@ def main():
         )
         raise SystemExit(1)
 
+    if args.stdin_filename is not None and args.stdin_filename.suffix != ".py":
+        print(
+            f"octowrap: error: --stdin-filename {args.stdin_filename} is not a "
+            "Python file",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     if stdin_mode:
         if len(args.paths) > 1:
             print(
@@ -2166,7 +2174,10 @@ def main():
     files_to_process = []
     for path in args.paths:
         if path.is_file():
-            files_to_process.append(path)
+            if path.suffix != ".py":
+                print(f"Warning: {path} is not a Python file, skipping")
+            else:
+                files_to_process.append(path)
         elif path.is_dir():
             if args.recursive:
                 files_to_process.extend(

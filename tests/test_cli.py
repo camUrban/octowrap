@@ -87,6 +87,16 @@ class TestMain:
         out = capsys.readouterr().out
         assert "not found, skipping" in out
 
+    def test_explicit_non_python_file_warns(self, tmp_path, monkeypatch, capsys):
+        md = tmp_path / "README.md"
+        md.write_text("# Heading\n\nProse that should never be touched.\n")
+        original = md.read_text()
+        monkeypatch.setattr("sys.argv", ["octowrap", str(md)])
+        main()
+        out = capsys.readouterr().out
+        assert "is not a Python file, skipping" in out
+        assert md.read_text() == original
+
     def test_directory_non_recursive(self, tmp_path, monkeypatch, capsys):
         """With --no-recursive, only top level .py files are processed."""
         (tmp_path / "top.py").write_bytes(WRAPPABLE_CONTENT)
@@ -712,6 +722,16 @@ class TestStdinFilename:
             main()
         err = capsys.readouterr().err
         assert "--stdin-filename requires" in err
+
+    def test_stdin_filename_non_python_errors(self, monkeypatch, capsys):
+        """--stdin-filename with a non-.py suffix prints an error and exits 1."""
+        monkeypatch.setattr(
+            "sys.argv", ["octowrap", "--stdin-filename", "README.md", "-"]
+        )
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        err = capsys.readouterr().err
+        assert "is not a Python file" in err
 
     def test_stdin_filename_config_discovery(self, tmp_path, monkeypatch, capsys):
         """Config is discovered from --stdin-filename's parent, not CWD."""
