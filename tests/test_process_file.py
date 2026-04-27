@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -1836,6 +1837,280 @@ class TestUndoAction:
         assert out.count("[1/3]") == 1
         assert out.count("[2/3]") == 2
         assert out.count("[3/3]") == 2
+
+    def test_undo_after_a_then_A_rewinds_to_A_position(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Sequence ``a, A, u`` across files: the first paragraph is plainly accepted,
+        the second paragraph is the A-press (auto-accepting the third), and ``u`` at the
+        next file's first prompt must pop the most recent decision — the A — rewinding
+        to *that* paragraph (not back to paragraph 1).
+
+        Pins down: ``u`` pops the latest decision regardless of position in the
+        decision log, so the re-prompt lands on the A-position. Verified via the
+        ``Lines X-Y`` markers and progress indicators in show_block_diff output.
+        """
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        # File 1: 3 wrappable paragraphs (Lines 1-2, 4-5, 7-8).
+        self._make_three_paragraph_file(a)
+        # File 2: 2 wrappable paragraphs (Lines 1-2, 4-5).
+        b.write_bytes(
+            b"# First B-block that was wrapped\n"
+            b"# at a short width.\n"
+            b"p = 1\n"
+            b"# Second B-block that was also wrapped\n"
+            b"# at a short width.\n"
+        )
+
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        # a, A, u, then s for the four remaining prompts after rewind.
+        responses = iter(["a", "A", "u", "s", "s", "s", "s"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+
+        state = _init_session_state(None)
+        state["block_total"] = 5
+        state["block_current"] = 0
+
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+
+        out = capsys.readouterr().out
+        # Sequence of "Lines X-Y" markers in the captured diff output. We expect:
+        #   1. file1 paragraph 1 (Lines 1-2) — `a`
+        #   2. file1 paragraph 2 (Lines 4-5) — `A` (paragraph 3 auto-accepts silently)
+        #   3. file2 paragraph 1 (Lines 1-2) — `u` rewinds back into file 1
+        #   4. file1 paragraph 2 (Lines 4-5) — re-prompt at the A position
+        #   5. file1 paragraph 3 (Lines 7-8) — `s` (was auto-accepted; now re-prompts)
+        #   6. file2 paragraph 1 (Lines 1-2) — `s`
+        #   7. file2 paragraph 2 (Lines 4-5) — `s`
+        line_markers = re.findall(r"Lines (\d+-\d+)", out)
+        assert line_markers == [
+            "1-2",
+            "4-5",
+            "1-2",
+            "4-5",
+            "7-8",
+            "1-2",
+            "4-5",
+        ], f"unexpected prompt order: {line_markers}"
+
+        # Progress indicators on the diff headers, in order. The third prompt (file 2
+        # paragraph 1) shows [4/5] because file 1's auto-accept of paragraph 3 added 1
+        # to block_current via a_extras at file 2 entry. After undo, recompute drops the
+        # a_extras padding, so the re-prompt at paragraph 2 of file 1 shows [2/5].
+        progress_markers = re.findall(r"\[(\d+/\d+)\]", out)
+        assert progress_markers == [
+            "1/5",
+            "2/5",
+            "4/5",
+            "2/5",
+            "3/5",
+            "4/5",
+            "5/5",
+        ], f"unexpected progress sequence: {progress_markers}"
+
+        # Final decision log: only the original a@paragraph1_file1 survived; A was
+        # popped and everything from paragraph2_file1 onward was re-prompted as `s`.
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["a", "s", "s", "s", "s"]
+        # a_extras emptied (the only A was popped).
+        assert state["a_extras"] == {}
+
+    def test_progress_counter_includes_auto_accepts_under_A(
+        self, tmp_path, monkeypatch
+    ):
+        """Pressing A bumps [X/Y] for the prompt itself plus every silently auto-
+        accepted paragraph that follows in the same file.
+
+        Regression: previously block_current was incremented only at the A prompt, so
+        a file with N changed paragraphs where the user pressed A on the first prompt
+        finished with block_current=1 instead of N — and the indicator at the next
+        file's first prompt under-reported total progress by N-1.
+        """
+        f = tmp_path / "t.py"
+        self._make_three_paragraph_file(f)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "A")
+        state = _init_session_state(None)
+        state["block_total"] = 3
+        state["block_current"] = 0
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+
+        # 3 changed paragraphs, A on the first; the other 2 auto-accept.
+        assert len(state["decisions"]) == 1
+        assert state["decisions"][0].action == "A"
+        # a_extras records the count of subsequent auto-accepted paragraphs (2).
+        a_cursor = state["decisions"][0].cursor
+        a_filepath = state["decisions"][0].filepath
+        assert state["a_extras"][(a_filepath, a_cursor)] == 2
+
+    def test_progress_counter_carries_auto_accepts_into_next_file(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """[X/Y] at the next file's first prompt reflects the auto-accepts from the
+        prior file's A press.
+
+        Two files, 3 changed paragraphs each (block_total=6). Press A on file 1's
+        first prompt: 3 paragraphs of file 1 are processed (1 prompt + 2 auto-
+        accepts). The next prompt — file 2's first — should display [4/6], not
+        [2/6].
+        """
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        self._make_three_paragraph_file(a)
+        self._make_three_paragraph_file(b)
+
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        # A in a.py auto-accepts a.py's remaining 2 paragraphs; then we hit b.py's first
+        # prompt. 's' there leaves the rest unchanged.
+        responses = iter(["A", "s", "s", "s"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        state["block_total"] = 6
+        state["block_current"] = 0
+
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+
+        out = capsys.readouterr().out
+        # File 1 prompt 1 (the A): [1/6]. File 2 prompt 1: [4/6] — *not* [2/6].
+        assert "[1/6]" in out
+        assert "[4/6]" in out
+        assert "[2/6]" not in out, (
+            f"the indicator under-reported auto-accepts under A; output:\n{out}"
+        )
+
+    def test_progress_counter_under_A_at_inline_prompt(self, tmp_path, monkeypatch):
+        """A pressed at an inline-extraction prompt also records its auto-accept count,
+        covering the inline branch of ``_record_a_extras``."""
+        f = tmp_path / "t.py"
+        inline_overflow = (
+            b"x = 1  # this inline comment is way too long and definitely exceeds the"
+            b" eighty-eight character line length limit set\n"
+        )
+        # Two overflowing inline comments + one wrappable comment block — three changed
+        # paragraphs total. A on the first inline prompt auto-accepts the other two.
+        f.write_bytes(
+            inline_overflow
+            + b"# First block that was wrapped\n"
+            + b"# at a short width.\n"
+            + b"y = 2  # another long inline comment that exceeds the eighty-eight"
+            + b" character line length limit too\n"
+        )
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "A")
+        state = _init_session_state(None)
+        state["block_total"] = 3
+        state["block_current"] = 0
+        process_file(f, max_line_length=88, interactive=True, _state=state)
+
+        assert len(state["decisions"]) == 1
+        assert state["decisions"][0].action == "A"
+        assert state["decisions"][0].cursor[1] == "inline"
+        # 2 paragraphs auto-accepted after the A.
+        a_cursor = state["decisions"][0].cursor
+        a_filepath = state["decisions"][0].filepath
+        assert state["a_extras"][(a_filepath, a_cursor)] == 2
+
+    def test_a_extras_cleaned_up_on_undo_of_inline_A(self, tmp_path, monkeypatch):
+        """Inline-extraction undo path also drops a_extras when the popped decision is
+        an A pressed at an inline prompt."""
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        inline_overflow = (
+            b"x = 1  # this inline comment is way too long and definitely exceeds the"
+            b" eighty-eight character line length limit set\n"
+            b"y = 2  # another long inline comment that exceeds the eighty-eight"
+            b" character line length limit too\n"
+        )
+        a.write_bytes(inline_overflow)
+        b.write_bytes(inline_overflow)
+
+        # A at a.py's first inline prompt auto-accepts the second inline. At b.py's
+        # first inline prompt, u rewinds back to a.py's first inline (popping the A and
+        # clearing its a_extras entry).
+        responses = iter(["A", "u", "s", "s", "s", "s"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        state["block_total"] = 4
+        state["block_current"] = 0
+
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+
+        assert state["a_extras"] == {}
+
+    def test_a_extras_cleaned_up_on_undo_of_A(self, tmp_path, monkeypatch):
+        """Undoing the A decision itself drops its a_extras entry so the recomputed
+        block_current at re-entry no longer includes its (now-invalid) auto-accept
+        padding."""
+        from octowrap.rewrap import _run_session
+
+        a = tmp_path / "a.py"
+        b = tmp_path / "b.py"
+        self._make_three_paragraph_file(a)
+        self._make_three_paragraph_file(b)
+
+        # A in a.py (auto-accepts the other 2). At b.py's first prompt: u rewinds back
+        # to a.py's first paragraph (popping the A and clearing its a_extras). a.py's
+        # three paragraphs are then re-prompted: s s s. b.py: s s s.
+        responses = iter(["A", "u", "s", "s", "s", "s", "s", "s"])
+        monkeypatch.setattr(
+            "octowrap.rewrap.prompt_user", lambda *_, **__: next(responses)
+        )
+        state = _init_session_state(None)
+        state["block_total"] = 6
+        state["block_current"] = 0
+
+        list(
+            _run_session(
+                [a, b],
+                state,
+                max_line_length=88,
+                dry_run=False,
+                interactive=True,
+            )
+        )
+
+        # a_extras is empty after the A is popped.
+        assert state["a_extras"] == {}
+        # 6 prompts after the rewind (3 in a.py + 3 in b.py), all 's'.
+        actions = [d.action for d in state["decisions"]]
+        assert actions == ["s", "s", "s", "s", "s", "s"]
+        # block_current ends at len(decisions) + 0 (no surviving A) = 6.
+        assert state["block_current"] == 6
 
     def test_mixed_paragraph_and_inline_cursors(self, tmp_path, monkeypatch):
         """A file with both inline and paragraph prompts disambiguates cursors via the

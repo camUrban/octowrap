@@ -882,6 +882,53 @@ def count_changed_blocks(
     return count
 
 
+def _record_a_extras(
+    _state: dict | None,
+    content: str,
+    filepath: str,
+    cursor: tuple,
+    max_line_length: int,
+    *,
+    todo_patterns: list[str] | None,
+    todo_case_sensitive: bool,
+    todo_multiline: bool,
+    inline: bool,
+    list_wrap: bool,
+    changed_lines: set[int] | None,
+) -> None:
+    """Record how many remaining changed paragraphs in *filepath* will be auto-accepted
+    under this A decision, so the [X/Y] indicator reflects them.
+
+    Idempotent: re-entry of a file (e.g. after undo of a later decision) replays
+    the A and would otherwise overwrite or double-count. We compute the count once,
+    on the first time A is pressed for this cursor, by subtracting the number of
+    decisions already recorded for this file (which includes the just-appended A
+    itself) from the total changed-paragraph count for the file.
+    """
+    if _state is None or "block_total" not in _state or "decisions" not in _state:
+        return
+    a_extras = _state.setdefault("a_extras", {})
+    key = (filepath, cursor)
+    if key in a_extras:
+        # Defensive: re-traversal of the file containing A is only reached via undo, and
+        # undo of A clears its a_extras entry before re-entry, so this branch is not
+        # exercised in current flow.  Kept to make the helper safely idempotent for
+        # future callers.
+        return  # pragma: no cover
+    total_in_file = count_changed_blocks(
+        content,
+        max_line_length,
+        todo_patterns=todo_patterns,
+        todo_case_sensitive=todo_case_sensitive,
+        todo_multiline=todo_multiline,
+        inline=inline,
+        list_wrap=list_wrap,
+        changed_lines=changed_lines,
+    )
+    decisions_for_file = sum(1 for d in _state["decisions"] if d.filepath == filepath)
+    a_extras[key] = max(0, total_in_file - decisions_for_file)
+
+
 _USE_COLOR: bool = True
 
 
@@ -1107,11 +1154,21 @@ def process_content(
         {d.cursor: d.action for d in decisions} if decisions else {}
     )
 
-    # Recompute block_current from the session-wide decisions length so the progress
-    # indicator [X/Y] rolls back correctly after undo. The prompt branch increments this
-    # counter from the new baseline.
+    # Recompute block_current so the progress indicator [X/Y] rolls back correctly after
+    # undo. Each Decision contributes one bump (the prompt where it was made);
+    # additionally, an "A" (accept-all) decision auto-accepts every subsequent changed
+    # paragraph in its file without prompting, and those silent paragraphs also count
+    # toward [X/Y]. Their per-A count is recorded in _state["a_extras"] at the time A is
+    # pressed and re-summed here on every file entry so the indicator stays correct as
+    # files come and go from the active set.
     if _state is not None and "block_total" in _state and "decisions" in _state:
-        _state["block_current"] = len(_state["decisions"])
+        a_extras = _state.get("a_extras", {})
+        extras_sum = sum(
+            a_extras.get((d.filepath, d.cursor), 0)
+            for d in _state["decisions"]
+            if d.action == "A"
+        )
+        _state["block_current"] = len(_state["decisions"]) + extras_sum
 
     new_lines = []
     user_quit = False
@@ -1237,6 +1294,10 @@ def process_content(
                             # cursor.
                             assert _state is not None  # can_undo guarantees this
                             popped = _state["decisions"].pop()
+                            if popped.action == "A":
+                                _state.get("a_extras", {}).pop(
+                                    (popped.filepath, popped.cursor), None
+                                )
                             _state["rewind_target"] = popped
                             if popped.filepath in _state["last_written"]:
                                 _state["dirty"].add(popped.filepath)
@@ -1253,6 +1314,19 @@ def process_content(
                     if action == "A":
                         accept_all = True
                         new_lines.extend(replacement)
+                        _record_a_extras(
+                            _state,
+                            content,
+                            filepath,
+                            cursor,
+                            max_line_length,
+                            todo_patterns=todo_patterns,
+                            todo_case_sensitive=todo_case_sensitive,
+                            todo_multiline=todo_multiline,
+                            inline=inline,
+                            list_wrap=list_wrap,
+                            changed_lines=changed_lines,
+                        )
                     elif action == "a":
                         new_lines.extend(replacement)
                     elif action == "e":
@@ -1440,6 +1514,10 @@ def process_content(
                     # exit. The session driver will re-enter at the popped cursor.
                     assert _state is not None  # can_undo guarantees this
                     popped = _state["decisions"].pop()
+                    if popped.action == "A":
+                        _state.get("a_extras", {}).pop(
+                            (popped.filepath, popped.cursor), None
+                        )
                     _state["rewind_target"] = popped
                     if popped.filepath in _state["last_written"]:
                         _state["dirty"].add(popped.filepath)
@@ -1450,6 +1528,19 @@ def process_content(
             if action == "A":
                 accept_all = True
                 new_lines.extend(rewrapped)
+                _record_a_extras(
+                    _state,
+                    content,
+                    filepath,
+                    cursor,
+                    max_line_length,
+                    todo_patterns=todo_patterns,
+                    todo_case_sensitive=todo_case_sensitive,
+                    todo_multiline=todo_multiline,
+                    inline=inline,
+                    list_wrap=list_wrap,
+                    changed_lines=changed_lines,
+                )
             elif action == "a":
                 new_lines.extend(rewrapped)
             elif action == "e":
@@ -1582,6 +1673,7 @@ def _init_session_state(state: dict | None) -> dict:
     state.setdefault("last_written", {})
     state.setdefault("dirty", set())
     state.setdefault("rewind_target", None)
+    state.setdefault("a_extras", {})
     return state
 
 
