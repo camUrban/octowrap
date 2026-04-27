@@ -947,6 +947,15 @@ def _getch() -> str:
 
     Uses platform specific APIs (msvcrt on Windows, termios/tty/select on
     Unix), imported locally to avoid cross-platform resolution issues.
+
+    On Unix, reads go through ``os.read`` on the raw stdin file descriptor
+    rather than ``sys.stdin.read``.  ``sys.stdin`` is a buffered TextIOWrapper
+    that may pre-fetch additional bytes from the kernel pipe on the first
+    read; if it does, those bytes sit in Python's buffer where neither
+    ``select.select`` nor ``termios.tcflush`` can see them, and the next
+    ``read`` would surface them as bogus keypresses (e.g. the ``A`` in an up
+    arrow's ``\\x1b[A`` being misread as ``accept all``).  Using ``os.read``
+    keeps every byte at the OS layer where the drain logic can reach it.
     """
     if sys.platform == "win32":
         import msvcrt
@@ -973,21 +982,26 @@ def _getch() -> str:
     try:
         tty.setcbreak(fd)
         try:
-            ch = sys.stdin.read(1)
-        except UnicodeDecodeError:
-            ch = ""
+            data = os.read(fd, 1)
+        except OSError:
+            return ""
+        if not data:
+            return ""
+        ch = data.decode("utf-8", errors="replace")
         if ch == "\x1b":
             # Drain the rest of the escape sequence.  A small timeout (rather than a
             # non-blocking peek) catches tails that arrive a few milliseconds late over
             # slow terminals or SSH; matches ncurses' ESCDELAY convention.
             while select.select([fd], [], [], 0.05)[0]:
                 try:
-                    sys.stdin.read(1)
-                except UnicodeDecodeError:
-                    pass
-            ch = ""
-        # Drain anything else queued behind this keypress so a paste's trailing bytes
-        # don't bleed into the next prompt.
+                    if not os.read(fd, 64):
+                        break
+                except OSError:
+                    break
+            return ""
+        # Drain anything else queued behind this keypress (paste tail, type-ahead) so it
+        # doesn't bleed into the next prompt.  tcflush operates on the kernel queue,
+        # which is where os.read leaves any unread bytes.
         termios.tcflush(fd, termios.TCIFLUSH)
         return ch
     finally:

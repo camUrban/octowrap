@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1 - 2026-04-27
+
+### Fixed
+- Pressing the up arrow key (and other escape sequences) in interactive mode could still trigger "accept all remaining paragraphs" despite the 0.6.0 fix. The Unix `_getch()` path read via `sys.stdin.read(1)`, a buffered TextIOWrapper that pre-fetched all three bytes of `\x1b[A` from the kernel pipe into Python's internal buffer on the first read; the subsequent `select`-based drain only saw the OS file descriptor, missed the buffered bytes, and the trailing `A` resurfaced on the next prompt as the accept-all action. `_getch()` now reads via `os.read()` on the raw stdin file descriptor so every byte stays at the OS layer where the drain logic can reach it. A regression test wires `_getch()` up to a real `os.pipe()` pre-loaded with `\x1b[A` — the exact precondition that triggered the bug — to guard against a recurrence.
+
 ## 0.6.0 - 2026-04-26
 
 ### Added

@@ -115,12 +115,13 @@ class TestGetch:
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
     def test_unix_termios(self, monkeypatch):
-        """On Unix, _getch uses termios/tty to read one character."""
+        """On Unix, _getch uses termios/tty + os.read to read one character."""
+        import os
         import termios
         import tty
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
-        monkeypatch.setattr("sys.stdin.read", lambda n: "k")
+        monkeypatch.setattr(os, "read", lambda fd, n: b"k")
         monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
         monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
         monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
@@ -236,15 +237,16 @@ class TestGetchEscapeSequences:
     @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
     def test_unix_escape_sequence_returns_empty(self, monkeypatch):
         """\\x1b[A (up arrow) is consumed in full and reported as ''."""
+        import os
         import select
         import termios
         import tty
 
-        reads = iter(["\x1b", "[", "A"])
-        ready = iter([([0], [], []), ([0], [], []), ([], [], [])])
+        reads = iter([b"\x1b", b"[A"])
+        ready = iter([([0], [], []), ([], [], [])])
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
-        monkeypatch.setattr("sys.stdin.read", lambda n: next(reads))
+        monkeypatch.setattr(os, "read", lambda fd, n: next(reads))
         monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
         monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
         monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
@@ -258,12 +260,13 @@ class TestGetchEscapeSequences:
     @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
     def test_unix_bare_escape_returns_empty(self, monkeypatch):
         """A lone ESC press with no tail bytes returns '' rather than \\x1b."""
+        import os
         import select
         import termios
         import tty
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
-        monkeypatch.setattr("sys.stdin.read", lambda n: "\x1b")
+        monkeypatch.setattr(os, "read", lambda fd, n: b"\x1b")
         monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
         monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
         monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
@@ -279,6 +282,7 @@ class TestGetchEscapeSequences:
         """The select() that drains the ESC tail must use a nonzero timeout so a slow
         remote terminal where the tail bytes arrive a few milliseconds late still has
         its sequence drained instead of leaking into the next read."""
+        import os
         import select
         import termios
         import tty
@@ -290,7 +294,7 @@ class TestGetchEscapeSequences:
             return ([], [], [])
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
-        monkeypatch.setattr("sys.stdin.read", lambda n: "\x1b")
+        monkeypatch.setattr(os, "read", lambda fd, n: b"\x1b")
         monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
         monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
         monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
@@ -310,13 +314,14 @@ class TestGetchEscapeSequences:
     def test_unix_normal_char_drains_input_buffer(self, monkeypatch):
         """After a single-byte read, _getch flushes any further buffered input so that a
         paste's trailing bytes don't bleed into the next prompt."""
+        import os
         import termios
         import tty
 
         flush_calls = []
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
-        monkeypatch.setattr("sys.stdin.read", lambda n: "a")
+        monkeypatch.setattr(os, "read", lambda fd, n: b"a")
         monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
         monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
         monkeypatch.setattr(
@@ -333,17 +338,18 @@ class TestGetchEscapeSequences:
         )
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
-    def test_unix_unicode_decode_error_returns_empty(self, monkeypatch):
-        """A UnicodeDecodeError on read is treated as a non-action key rather than
-        crashing the interactive loop."""
+    def test_unix_read_oserror_returns_empty(self, monkeypatch):
+        """An OSError on read (e.g. interrupted syscall) is treated as a non-action key
+        rather than crashing the interactive loop."""
+        import os
         import termios
         import tty
 
-        def fake_read(n):
-            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        def fake_read(fd, n):
+            raise OSError("interrupted")
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
-        monkeypatch.setattr("sys.stdin.read", fake_read)
+        monkeypatch.setattr(os, "read", fake_read)
         monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
         monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
         monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
@@ -352,6 +358,33 @@ class TestGetchEscapeSequences:
         monkeypatch.setattr(tty, "setcbreak", lambda fd: None)
 
         assert _getch() == ""
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
+    def test_unix_invalid_utf8_byte_does_not_crash(self, monkeypatch):
+        """A non-UTF8 byte (e.g. 0xff) is decoded with errors='replace' rather than
+        crashing the interactive loop.
+
+        The resulting character is harmless: it never
+        matches any action key, so prompt_user re-prompts.
+        """
+        import os
+        import termios
+        import tty
+
+        monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
+        monkeypatch.setattr(os, "read", lambda fd, n: b"\xff")
+        monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
+        monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
+        monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
+        monkeypatch.setattr(termios, "TCSADRAIN", 1)
+        monkeypatch.setattr(termios, "TCIFLUSH", 0)
+        monkeypatch.setattr(tty, "setcbreak", lambda fd: None)
+
+        result = _getch()
+        # The replacement character (or anything else) is fine as long as it's not a
+        # recognized action key; assert it would not trigger any of {a,A,e,f,s,u,q}.
+        assert result.lower() not in {"a", "e", "f", "s", "u", "q"}
+        assert result != "A"
 
     def test_windows_special_key_xe0_prefix(self, monkeypatch):
         """Windows reports special keys (arrows, F-keys) as a \\xe0 prefix followed by a
@@ -418,31 +451,26 @@ class TestGetchEscapeSequences:
             assert _getch() == "k"
 
     @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
-    def test_unix_unicode_decode_error_during_escape_drain_tolerated(self, monkeypatch):
-        """A UnicodeDecodeError raised while draining the tail of an escape sequence is
-        swallowed; the drain loop continues until select reports nothing pending and
-        _getch still returns ''."""
+    def test_unix_oserror_during_escape_drain_tolerated(self, monkeypatch):
+        """An OSError raised while draining the tail of an escape sequence breaks the
+        drain loop cleanly rather than propagating, and _getch still returns ''."""
+        import os
         import select
         import termios
         import tty
 
-        reads = iter(
-            [
-                "\x1b",
-                UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
-            ]
-        )
+        reads = iter([b"\x1b", OSError("interrupted")])
 
-        def fake_read(n):
+        def fake_read(fd, n):
             value = next(reads)
-            if isinstance(value, UnicodeDecodeError):
+            if isinstance(value, OSError):
                 raise value
             return value
 
         ready = iter([([0], [], []), ([], [], [])])
 
         monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
-        monkeypatch.setattr("sys.stdin.read", fake_read)
+        monkeypatch.setattr(os, "read", fake_read)
         monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
         monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
         monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
@@ -452,6 +480,93 @@ class TestGetchEscapeSequences:
         monkeypatch.setattr(select, "select", lambda *a, **k: next(ready))
 
         assert _getch() == ""
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
+    def test_unix_eof_on_first_read_returns_empty(self, monkeypatch):
+        """``os.read`` returns ``b''`` at EOF (e.g. closed stdin); _getch reports '' so
+        the prompt loop can re-prompt or exit gracefully rather than crashing."""
+        import os
+        import termios
+        import tty
+
+        monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
+        monkeypatch.setattr(os, "read", lambda fd, n: b"")
+        monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
+        monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
+        monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
+        monkeypatch.setattr(termios, "TCSADRAIN", 1)
+        monkeypatch.setattr(termios, "TCIFLUSH", 0)
+        monkeypatch.setattr(tty, "setcbreak", lambda fd: None)
+
+        assert _getch() == ""
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
+    def test_unix_eof_during_escape_drain_breaks_loop(self, monkeypatch):
+        """If ``os.read`` returns ``b''`` while draining an escape tail, the drain loop
+        must break instead of spinning forever on a closed pipe."""
+        import os
+        import select
+        import termios
+        import tty
+
+        reads = iter([b"\x1b", b""])
+        monkeypatch.setattr("sys.stdin.fileno", lambda: 0)
+        monkeypatch.setattr(os, "read", lambda fd, n: next(reads))
+        monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
+        monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
+        monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
+        monkeypatch.setattr(termios, "TCSADRAIN", 1)
+        monkeypatch.setattr(termios, "TCIFLUSH", 0)
+        monkeypatch.setattr(tty, "setcbreak", lambda fd: None)
+        # select reports ready forever; only the b"" return value can break the loop.
+        monkeypatch.setattr(select, "select", lambda *a, **k: ([0], [], []))
+
+        assert _getch() == ""
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Unix only path")
+    def test_unix_up_arrow_real_pipe_drains_tail(self, monkeypatch):
+        """Regression for v0.6.0: pressing up arrow (\\x1b[A) leaked '[' and 'A' into
+        subsequent reads because Python's TextIOWrapper pre-fetched all 3 bytes from the
+        kernel pipe into its own buffer on the first ``sys.stdin.read(1)``, and the
+        select-based drain (which only sees the OS fd) couldn't reach them.  Result: the
+        next prompt would echo '[' (ignored) and then 'A' (misread as accept-all).
+
+        This test wires _getch up to a real pipe pre-loaded with all 3 bytes — the exact
+        condition that triggered the bug — and checks that _getch consumes the whole
+        sequence and leaves the pipe empty.
+        """
+        import os
+        import termios
+        import tty
+
+        r_fd, w_fd = os.pipe()
+        try:
+            os.write(w_fd, b"\x1b[A")
+
+            monkeypatch.setattr("sys.stdin.fileno", lambda: r_fd)
+            monkeypatch.setattr(termios, "tcgetattr", lambda fd: [])
+            monkeypatch.setattr(termios, "tcsetattr", lambda fd, when, old: None)
+            # tcflush only works on real terminals; stub it out.  os.read + select
+            # already guarantee the kernel pipe is empty on success, so this stub isn't
+            # masking the assertion below.
+            monkeypatch.setattr(termios, "tcflush", lambda fd, when: None)
+            monkeypatch.setattr(tty, "setcbreak", lambda fd: None)
+
+            assert _getch() == "", "up arrow must collapse to '' (no leftover key)"
+
+            # The pipe must be empty: any leftover byte would resurface as a bogus
+            # keypress in the next prompt iteration — exactly the original bug.
+            import select as _sel
+
+            ready, _, _ = _sel.select([r_fd], [], [], 0)
+            if ready:
+                leftover = os.read(r_fd, 16)
+                pytest.fail(
+                    f"up arrow leaked tail bytes into the input stream: {leftover!r}"
+                )
+        finally:
+            os.close(r_fd)
+            os.close(w_fd)
 
 
 class TestPromptUserNoRawByteEcho:
