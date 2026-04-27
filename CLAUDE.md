@@ -10,7 +10,7 @@ octowrap is a Python CLI tool that rewraps Python `#` comments to a specified li
 
 ```bash
 # Install in dev mode with all dependencies
-uv pip install -e ".[dev]"
+uv sync
 
 # Run the tool
 octowrap <files_or_dirs>

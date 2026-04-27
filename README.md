@@ -38,8 +38,7 @@ Rewrap Python `#` comments to a line length you choose — without touching comm
 ```bash
 git clone https://github.com/camUrban/octowrap.git
 cd octowrap
-uv venv            # uses .python-version (3.13)
-uv pip install -e ".[dev]"
+uv sync            # uses .python-version (3.13); installs runtime + dev group
 ```
 
 > **Note:** The dev environment is pinned to Python 3.13 via `.python-version` because docformatter's `untokenize` dependency doesn't build on 3.14. The runtime itself supports 3.11+.
@@ -216,7 +215,7 @@ The most common use case is adding octowrap to pre-commit so it only enforces wr
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.6.0
+  rev: v0.6.1
   hooks:
     - id: octowrap
       args: [--diff-only]
@@ -226,7 +225,7 @@ Or in check-only mode (fail without modifying):
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.6.0
+  rev: v0.6.1
   hooks:
     - id: octowrap
       args: [--diff-only, --check]
@@ -260,7 +259,7 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.6.0
+  rev: v0.6.1
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
