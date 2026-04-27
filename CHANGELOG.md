@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 - 2026-04-26
+
+### Added
+- Section header detection: lines like `# === Title ===`, `# --- Title ---`, `# ### Title ###`, `# *** Title ***`, and `# ___ Title ___` are now preserved verbatim instead of being merged into surrounding prose. Requires the same delimiter character (`-`, `=`, `#`, `*`, `_`) on both sides with at least three of that character per side; asymmetric counts (e.g. `# === Title ====`) and zero-padding (e.g. `# ===Title===`) are accepted. Overflowing headers pass through unchanged, matching how dividers are handled.
+- `u` (undo) action in interactive mode (`-i`) that pops the most recent decision from a session-wide log and re-prompts at that position. Undo works across files: when undo lands in a previously-written file, the on-disk content is reverted lazily — either when the user re-walks through that file or at session end via the q-flush, which reconciles every file on disk with the final decision log so undone writes never persist. Decisions made before the undo are silently replayed on re-entry, so the user is only re-prompted at and beyond the rewind cursor. The `[u]ndo` label is hidden at the very first prompt of a session when there is nothing to pop.
+
+### Fixed
+- Pressing the up arrow key in interactive mode no longer silently triggers "accept all remaining paragraphs". `_getch()` now consumes escape sequences (arrow keys, function keys, etc.) as a single logical event using a 50ms drain timeout that matches ncurses' `ESCDELAY` convention, so the trailing `A` of `\x1b[A` can no longer collide with the accept-all action. Bare ESC presses and other escape sequences (mouse, focus, window-resize) are likewise swallowed cleanly.
+- Pasting text into an interactive prompt no longer leaks subsequent characters into following prompts. After each accepted keypress, `_getch()` now drains any remaining buffered input (`termios.tcflush(TCIFLUSH)` on Unix, `msvcrt.kbhit()` loop on Windows). The first character of a paste is still consumed as that prompt's answer, but the rest is discarded instead of bleeding into later block prompts.
+- `prompt_user()` now validates input before echoing, so an unrecognized keypress no longer writes its raw bytes (ESC, backspace, control characters) to the terminal. Previously these could scramble terminal state, particularly when ESC put the terminal into "expecting an escape sequence" mode and consumed the next real keystroke.
+- `--interactive` now exits cleanly with `octowrap: error: --interactive requires a TTY` when stdin is not a terminal, instead of crashing partway through with `termios.error` on the first prompt.
+- Windows special-key prefixes (`\x00`/`\xe0` followed by a scancode) are now consumed as a single non-action keypress instead of being returned as a literal `\x00` or `\xe0` character.
+- A `UnicodeDecodeError` from a malformed byte on stdin no longer crashes interactive mode; it is treated as a non-action keypress and the loop re-prompts.
+
 ## 0.5.1 - 2026-04-17
 
 ### Added

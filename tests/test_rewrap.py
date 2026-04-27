@@ -1,6 +1,10 @@
 from conftest import make_block
 
-from octowrap.rewrap import parse_pragma, rewrap_comment_block
+from octowrap.rewrap import (
+    is_section_header,
+    parse_pragma,
+    rewrap_comment_block,
+)
 
 
 def test_short_line_unchanged():
@@ -50,6 +54,71 @@ def test_divider_preserved():
     )
     result = rewrap_comment_block(block, max_line_length=88)
     assert "# ----------------------------------------" in result
+
+
+class TestSectionHeader:
+    """Section headers like ``# === Title ===`` are preserved verbatim."""
+
+    def test_equals_header_matches(self):
+        assert is_section_header(" === Section Name ===")
+
+    def test_dashes_header_matches(self):
+        assert is_section_header(" --- Title ---")
+
+    def test_hashes_header_matches(self):
+        assert is_section_header(" ### Title ###")
+
+    def test_stars_header_matches(self):
+        assert is_section_header(" *** Title ***")
+
+    def test_underscores_header_matches(self):
+        assert is_section_header(" ___ Title ___")
+
+    def test_asymmetric_counts_match(self):
+        assert is_section_header(" === Title ====")
+        assert is_section_header(" ===== Title ===")
+
+    def test_no_padding_matches(self):
+        assert is_section_header(" ===Title===")
+
+    def test_two_chars_per_side_rejected(self):
+        assert not is_section_header(" == Title ==")
+
+    def test_mixed_delimiters_rejected(self):
+        assert not is_section_header(" === Title ---")
+
+    def test_one_sided_rejected(self):
+        assert not is_section_header(" === Title")
+        assert not is_section_header(" Title ===")
+
+    def test_pure_divider_rejected(self):
+        # Title is all delimiter chars — that's a divider, not a header.
+        assert not is_section_header(" === === ===")
+
+    def test_section_header_preserved_verbatim(self):
+        """A header sandwiched between prose passes through unchanged."""
+        block = make_block(
+            [
+                "# Some intro prose that explains what follows.",
+                "# === Loading ===",
+                "# Some body prose that comes after the header.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert "# === Loading ===" in result
+
+    def test_overflowing_header_preserved_verbatim(self):
+        """Headers exceeding the line length pass through unchanged, like dividers."""
+        long_header = "# ===== A Really Long Section Heading That Overflows ====="
+        assert len(long_header) > 40
+        block = make_block([long_header])
+        result = rewrap_comment_block(block, max_line_length=40)
+        assert result == [long_header]
+
+    def test_asymmetric_header_preserved_verbatim(self):
+        block = make_block(["# ===== Setup ==="])
+        result = rewrap_comment_block(block, max_line_length=88)
+        assert result == ["# ===== Setup ==="]
 
 
 def test_blank_comment_line_separates_paragraphs():

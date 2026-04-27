@@ -1,0 +1,71 @@
+#!/usr/bin/env -S expect -f
+#
+# Drives `octowrap -i` against demo.py for the README hero animation. Invoked by
+# render.sh, which handles the asciinema recording and svg-term rendering -- see
+# that script for install prerequisites. The fixture is reset from demo.py.in on
+# every run so the cast is reproducible.
+
+set timeout 15
+set fixture "demo.py"
+set cmd "octowrap -i --line-length 88 $fixture"
+
+# Seed the RNG so the human-typing jitter in `type_command` is reproducible across
+# recordings. Any fixed integer works; change it if you want a different cadence.
+expr {srand(1)}
+
+# Reset the fixture so re-records produce byte-identical output.
+exec cp "$fixture.in" "$fixture"
+
+# Pause between prompt-render and keystroke so a viewer has time to read the diff.
+set think 3.2
+
+# Type a command into the recording one char at a time, as if a human were typing it
+# at a shell prompt. asciinema has no built-in feature for this; the canonical idiom
+# is to print to send_user before spawning the real process so the bytes flow through
+# the recorded PTY just like real typing would. The caller emits the prompt itself
+# so the prompt can linger on screen during a "user thinking" pause before the first
+# keystroke arrives.
+proc type_chars {cmd} {
+    foreach c [split $cmd ""] {
+        send_user -- $c
+        after [expr {40 + int(rand() * 80)}]
+    }
+    send_user "\r\n"
+}
+
+# Render the prompt first and hold it on screen for a beat, so the viewer reads it
+# as a shell that's ready and waiting before the user starts typing.
+send_user "\$ "
+sleep 0.8
+type_chars $cmd
+sleep 0.4
+
+# Run the real command. `-noecho` suppresses spawn's default `spawn octowrap ...`
+# banner so the recording shows only what the typed-out invocation would produce.
+spawn -noecho {*}[split $cmd " "]
+
+# Three prompts in this fixture: prose paragraph, TODO marker, inline-comment
+# extraction. Accept all three to show off the colored diff for each.
+foreach _ {1 2 3} {
+    expect {
+        -re {\? $} { sleep $think; send "a" }
+        timeout    { puts stderr "timed out waiting for prompt"; exit 1 }
+    }
+}
+
+# Drain octowrap's final summary ("Reformatted: ..." + "N file(s) reformatted.") so
+# it appears in the cast. expect's `sleep` doesn't pump PTY output -- only `expect`,
+# `wait`, and `interact` do -- so without an explicit drain the trailing summary
+# only flushes during `expect eof`, which then returns immediately and ends the cast
+# before the final frame has any visible duration.
+expect "file(s) reformatted"
+
+# Show the closing shell prompt immediately after the summary (as a real shell
+# would), then linger on it. The sleep needs a trailing event to anchor it --
+# asciinema's cast v2 has no duration field, so playback length is just the
+# timestamp of the last event, and no bytes flow through the PTY during a sleep.
+send_user "\$ "          ;# bookends the opening `$ `
+sleep 1.5
+send_user "\033\[0m"     ;# invisible ANSI reset; anchors the prompt linger
+
+expect eof

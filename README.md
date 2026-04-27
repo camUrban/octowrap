@@ -5,7 +5,11 @@
 [![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
 [![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
 
-A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line length while preserving commented-out code, section dividers, and tool directives. List items are rewrapped with hanging indent. TODO/FIXME markers are intelligently rewrapped with continuation indentation. Overflowing inline comments are extracted into standalone block comments and wrapped normally.
+Rewrap Python `#` comments to a line length you choose — without touching commented-out code, section dividers, TODO/FIXME markers, or tool directives.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/camUrban/octowrap/main/docs/hero/demo.svg" alt="Animated terminal demo of `octowrap -i` reviewing three comment changes in a small Python file: a long prose comment, a TODO marker, and an overflowing inline comment. Each diff appears in red/green and is accepted with a single keystroke." width="840">
+</p>
 
 ## Features
 
@@ -16,12 +20,13 @@ A CLI tool that rewraps octothorpe (`#`) Python comments to a specified line len
 - Heals erroneous spaces at bracket boundaries on rewrap (e.g. `( text)` -> `(text)`, `text )` -> `text)`)
 - Preserves commented-out Python code (detected via 21 heuristic patterns with a prose disqualifier to avoid false positives on natural English)
 - Preserves section dividers (`# --------`, `# ========`, etc.)
+- Preserves section headers (`# === Title ===`, `# --- Title ---`, `# ### Title ###`, `# *** Title ***`, `# ___ Title ___`) — same delimiter character on both sides, three or more per side, asymmetric counts allowed
 - Rewraps list items (bullets, numbered, lettered) with hanging indent aligned to the text after the marker; collects continuation lines and handles nesting naturally. Disable with `list-wrap = false`.
 - Rewraps TODO/FIXME markers with proper continuation indent, with configurable patterns, case sensitivity, and multi-line collection
 - Extracts overflowing inline comments (`code  # comment`) into standalone block comments above the code line when the line exceeds the line length, then wraps them normally. Tool directives (`# type: ignore`, `# noqa`, etc.) are always preserved in place. Disable with `--no-inline`.
 - Preserves tool directives (`type: ignore`, `noqa`, `fmt: off`, `pragma: no cover`, `pylint: disable`, `noinspection`, etc.)
 - Supports `# octowrap: off` / `# octowrap: on` pragma comments to disable rewrapping for regions of a file
-- Applies changes automatically by default, or use `-i` for interactive per-paragraph approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining paragraphs in the file, `e` exclude, `f` flag, `s` skip, `q` quit). A single comment block that mixes prose, a TODO, and a tool directive reviews as separate diffs — one per changed paragraph — so you can see exactly what's changing. Consecutive list items group into a single prompt. Flagging wraps the paragraph with a FIXME marker and `# octowrap: off` / `# octowrap: on` pragmas so reruns skip it. Quitting stops all processing, including remaining files.
+- Applies changes automatically by default, or use `-i` for interactive per-paragraph approval with colorized diffs and a `[X/Y]` progress indicator (`a` accept, `A` accept all remaining paragraphs in the file, `e` exclude, `f` flag, `s` skip, `u` undo, `q` quit). A single comment block that mixes prose, a TODO, and a tool directive reviews as separate diffs — one per changed paragraph — so you can see exactly what's changing. Consecutive list items group into a single prompt. Flagging wraps the paragraph with a FIXME marker and `# octowrap: off` / `# octowrap: on` pragmas so reruns skip it. Undo pops the most recent decision and re-prompts at that position; it works across files (a previously-written file is reverted on disk lazily — at quit or on the next walk-through). Quitting stops all processing, including remaining files; on quit, every file on disk is reconciled with the final decision log so undone writes are reverted.
 - Reads from stdin when `-` is passed as the path (like black/ruff/isort)
 - Auto-detects color support; respects `--no-color`, `--color`, and the `NO_COLOR` env var
 - Atomic file writes (temp file + rename) to protect against interruptions and power loss
@@ -209,7 +214,7 @@ The most common use case is adding octowrap to pre-commit so it only enforces wr
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.1
+  rev: v0.6.0
   hooks:
     - id: octowrap
       args: [--diff-only]
@@ -219,7 +224,7 @@ Or in check-only mode (fail without modifying):
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.1
+  rev: v0.6.0
   hooks:
     - id: octowrap
       args: [--diff-only, --check]
@@ -253,7 +258,7 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.1
+  rev: v0.6.0
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length

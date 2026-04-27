@@ -113,14 +113,14 @@ class TestProcessContentInline:
     def test_short_line_unchanged(self):
         """Lines within the limit are not touched."""
         content = "x = 1  # short\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
         assert result == content
 
     def test_long_line_extracted(self):
         """An overflowing inline comment is extracted above the code."""
         content = "x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit and needs to be extracted\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         lines = result.splitlines()
         # Comment should be above the code
@@ -133,7 +133,7 @@ class TestProcessContentInline:
         # Build a line that overflows but has a tool directive
         code = "x" * 80
         content = f"{code}  # type: ignore[assignment]\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
         assert result == content
 
@@ -141,7 +141,7 @@ class TestProcessContentInline:
         """Noqa directives are never extracted."""
         code = "x" * 80
         content = f"{code}  # noqa: E501\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
         assert result == content
 
@@ -151,14 +151,14 @@ class TestProcessContentInline:
             "# octowrap: off\n"
             "x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit\n"
         )
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
         assert result == content
 
     def test_indented_code(self):
         """Indented code gets the comment extracted at the correct indent."""
         content = "    x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit and needs extraction\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         lines = result.splitlines()
         # The comment should use the same indentation
@@ -169,22 +169,22 @@ class TestProcessContentInline:
     def test_idempotency(self):
         """Running twice produces the same output."""
         content = "x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit and needs to be extracted\n"
-        _, result1 = process_content(content, max_line_length=88)
-        changed, result2 = process_content(result1, max_line_length=88)
+        _, result1, _ = process_content(content, max_line_length=88)
+        changed, result2, _ = process_content(result1, max_line_length=88)
         assert not changed
         assert result2 == result1
 
     def test_inline_disabled(self):
         """When inline=False, overflowing inline comments are left alone."""
         content = "x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit\n"
-        changed, result = process_content(content, max_line_length=88, inline=False)
+        changed, result, _ = process_content(content, max_line_length=88, inline=False)
         assert not changed
         assert result == content
 
     def test_extracted_todo_wrapped_with_marker(self):
         """An extracted TODO comment uses TODO marker wrapping."""
         content = "x = some_really_long_function_call(arg1, arg2)  # TODO: This is a very long todo that exceeds the eighty-eight character line length limit and needs extraction\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         lines = result.splitlines()
         assert lines[0].startswith("# TODO: ")
@@ -198,7 +198,7 @@ class TestProcessContentInline:
             "x = some_really_long_function_call(arg1, arg2)  # First comment pushes the line way past the limit\n"
             "y = another_really_long_function(arg3, arg4)  # Second comment also pushes the line way past the limit\n"
         )
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert changed
         assert "# First comment" in result
         assert "# Second comment" in result
@@ -206,13 +206,13 @@ class TestProcessContentInline:
     def test_code_without_inline_untouched(self):
         """Long code lines without inline comments are not modified."""
         content = "x = some_really_long_function_call(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10)\n"
-        changed, result = process_content(content, max_line_length=88)
+        changed, result, _ = process_content(content, max_line_length=88)
         assert not changed
 
     def test_extracted_comment_wraps_to_line_length(self):
         """The extracted comment block respects max_line_length."""
         content = "x = func()  # This is a really long inline comment that definitely exceeds the forty character limit when extracted\n"
-        changed, result = process_content(content, max_line_length=40)
+        changed, result, _ = process_content(content, max_line_length=40)
         assert changed
         lines = result.splitlines()
         comment_lines = [ln for ln in lines if ln.startswith("#")]
@@ -309,7 +309,7 @@ class TestMultilineStringHash:
             '    """\n'
             "    return None\n"
         )
-        _, new_content = process_content(content, max_line_length=88)
+        _, new_content, _ = process_content(content, max_line_length=88)
         assert url in new_content
         assert new_content == content
 
@@ -320,7 +320,7 @@ class TestMultilineStringHash:
             "    this is a very long line inside a string with a #hashtag in it here\n"
             '"""\n'
         )
-        _, new_content = process_content(content, max_line_length=40)
+        _, new_content, _ = process_content(content, max_line_length=40)
         assert new_content == content
 
     def test_real_inline_still_extracted(self):
@@ -329,7 +329,7 @@ class TestMultilineStringHash:
             "x = some_really_long_function_call(arg1, arg2)"
             "  # This comment pushes the line way past the limit\n"
         )
-        changed, new_content = process_content(content, max_line_length=88)
+        changed, new_content, _ = process_content(content, max_line_length=88)
         assert changed
         assert "# This comment pushes" in new_content
 
@@ -338,7 +338,7 @@ class TestMultilineStringHash:
         # Unclosed string — tokenize raises, compute_comment_positions returns None.
         content = 'x = "unterminated\ny = 1  # a short comment\n'
         # Must not raise; behavior falls back to current scanning.
-        _, new_content = process_content(content, max_line_length=88)
+        _, new_content, _ = process_content(content, max_line_length=88)
         assert "y = 1" in new_content
 
 
@@ -363,7 +363,7 @@ class TestInlineInteractive:
         """Accepting an inline extraction applies the change."""
         f = tmp_path / "t.py"
         f.write_bytes(INLINE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "a")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "# This comment pushes" in content
@@ -376,7 +376,7 @@ class TestInlineInteractive:
         comments."""
         f = tmp_path / "t.py"
         f.write_bytes(TWO_INLINE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "A")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "A")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "# First comment" in content
@@ -389,7 +389,7 @@ class TestInlineInteractive:
         f.write_bytes(TWO_INLINE_CONTENT)
         call_count = 0
 
-        def counting_prompt():
+        def counting_prompt(*_, **__):
             nonlocal call_count
             call_count += 1
             return "A"
@@ -402,7 +402,7 @@ class TestInlineInteractive:
         """Skipping keeps the original inline comment in place."""
         f = tmp_path / "t.py"
         f.write_bytes(INLINE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "s")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "s")
         changed, _ = process_file(f, max_line_length=88, interactive=True)
         assert not changed
 
@@ -410,7 +410,7 @@ class TestInlineInteractive:
         """Excluding wraps the line with octowrap: off/on pragmas."""
         f = tmp_path / "t.py"
         f.write_bytes(INLINE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "e")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "e")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "# octowrap: off" in content
@@ -420,7 +420,7 @@ class TestInlineInteractive:
         """Flagging wraps FIXME + original line in octowrap off/on pragmas."""
         f = tmp_path / "t.py"
         f.write_bytes(INLINE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         changed, content = process_file(f, max_line_length=88, interactive=True)
         assert changed
         assert "# octowrap: off" in content
@@ -433,7 +433,7 @@ class TestInlineInteractive:
         """A flagged inline comment stays pragma-protected on the next pass."""
         f = tmp_path / "t.py"
         f.write_bytes(INLINE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "f")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         process_file(f, max_line_length=88, interactive=True)
         first_pass = f.read_bytes()
         changed, _ = process_file(f, max_line_length=88)
@@ -445,7 +445,7 @@ class TestInlineInteractive:
         f = tmp_path / "t.py"
         f.write_bytes(TWO_INLINE_CONTENT)
         state: dict = {}
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "q")
         changed, _ = process_file(f, max_line_length=88, interactive=True, _state=state)
         assert not changed
         assert state.get("quit") is True
@@ -454,7 +454,7 @@ class TestInlineInteractive:
         """After quitting, no further diffs are shown for remaining inline comments."""
         f = tmp_path / "t.py"
         f.write_bytes(TWO_INLINE_CONTENT)
-        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda: "q")
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "q")
         monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
         process_file(f, max_line_length=88, interactive=True)
         out = capsys.readouterr().out

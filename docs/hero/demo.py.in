@@ -1,0 +1,15 @@
+"""Tiny module used by docs/hero/record.exp to demo octowrap interactively."""
+
+
+# Rewrap your Python comments to a configured line length while keeping commented-out code, section dividers, TODO markers, and tool directives untouched and exactly where you put them.
+def describe() -> str:
+    return "octowrap rewraps comments without touching code"
+
+
+# TODO: implement once the websocket protocol stabilizes -- waiting on the upstream spec PR before we commit to a wire format, since changing it later means coordinated client/server releases nobody wants to plan around.
+def pending() -> None:
+    pass
+
+
+def add(a: int, b: int) -> int:
+    return a + b  # use the + operator rather than operator.add so the traceback points at this line if a or b are the wrong type, instead of vanishing into the operator module
