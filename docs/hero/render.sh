@@ -14,8 +14,8 @@ cd "$(dirname "$0")"
 # Pin the recorded PTY size so the SVG dimensions don't depend on the host
 # terminal. Width must comfortably exceed octowrap's --line-length (88) plus
 # diff prefixes; bump if the demo ever wraps awkwardly.
-cols=100
-rows=64
+cols=90
+rows=38
 
 asciinema rec --overwrite --cols "$cols" --rows "$rows" \
     --command ./record.exp demo.cast
