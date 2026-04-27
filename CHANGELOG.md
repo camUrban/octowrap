@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-04-26
 
 ### Added
 - Section header detection: lines like `# === Title ===`, `# --- Title ---`, `# ### Title ###`, `# *** Title ***`, and `# ___ Title ___` are now preserved verbatim instead of being merged into surrounding prose. Requires the same delimiter character (`-`, `=`, `#`, `*`, `_`) on both sides with at least three of that character per side; asymmetric counts (e.g. `# === Title ====`) and zero-padding (e.g. `# ===Title===`) are accepted. Overflowing headers pass through unchanged, matching how dividers are handled.

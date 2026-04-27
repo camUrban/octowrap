@@ -8,7 +8,7 @@
 Rewrap Python `#` comments to a line length you choose — without touching commented-out code, section dividers, TODO/FIXME markers, or tool directives.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/camUrban/octowrap/0.6.0/docs/hero/demo.svg" alt="Animated terminal demo of `octowrap -i` reviewing three comment changes in a small Python file: a long prose comment, a TODO marker, and an overflowing inline comment. Each diff appears in red/green and is accepted with a single keystroke." width="840">
+  <img src="https://raw.githubusercontent.com/camUrban/octowrap/main/docs/hero/demo.svg" alt="Animated terminal demo of `octowrap -i` reviewing three comment changes in a small Python file: a long prose comment, a TODO marker, and an overflowing inline comment. Each diff appears in red/green and is accepted with a single keystroke." width="840">
 </p>
 
 ## Features
@@ -214,7 +214,7 @@ The most common use case is adding octowrap to pre-commit so it only enforces wr
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.1
+  rev: v0.6.0
   hooks:
     - id: octowrap
       args: [--diff-only]
@@ -224,7 +224,7 @@ Or in check-only mode (fail without modifying):
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.1
+  rev: v0.6.0
   hooks:
     - id: octowrap
       args: [--diff-only, --check]
@@ -258,7 +258,7 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.5.1
+  rev: v0.6.0
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
