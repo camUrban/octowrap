@@ -1,0 +1,15 @@
+"""Tiny module used by docs/hero/record.exp to demo octowrap interactively."""
+
+
+# Rewrap your Python comments to a configured line length while keeping commented-out code, section dividers, TODO markers, and tool directives untouched and exactly where you put them.
+def describe() -> str:
+    return "octowrap rewraps comments without touching code"
+
+
+# TODO: tighten this example once the upstream serializer lands -- the current placeholder is just here to make the interactive demo show off how TODO continuation lines are rewrapped with a one-space hanging indent.
+def pending() -> None:
+    pass
+
+
+def add(a: int, b: int) -> int:
+    return a + b  # adds two integers together and returns the result, which is exactly the kind of trailing comment octowrap will hoist above the code line and rewrap normally
