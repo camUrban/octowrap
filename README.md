@@ -5,7 +5,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/octowrap)](https://pypi.org/project/octowrap/)
 [![License](https://img.shields.io/github/license/camUrban/octowrap)](LICENSE.md)
 
-> Rewrap Python `#` comments to a line length you choose — without touching commented-out code, section dividers, TODO/FIXME markers, or tool directives.
+Rewrap Python `#` comments to a line length you choose — without touching commented-out code, section dividers, TODO/FIXME markers, or tool directives.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/camUrban/octowrap/0.6.0/docs/hero/demo.svg" alt="Animated terminal demo of `octowrap -i` reviewing three comment changes in a small Python file: a long prose comment, a TODO marker, and an overflowing inline comment. Each diff appears in red/green and is accepted with a single keystroke." width="840">

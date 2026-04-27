@@ -19,12 +19,13 @@ exec cp "$fixture.in" "$fixture"
 # Pause between prompt-render and keystroke so a viewer has time to read the diff.
 set think 3.2
 
-# Open the recording with the invocation appearing one char at a time, as if a human
-# were typing it at a shell prompt. asciinema has no built-in feature for this; the
-# canonical idiom is to print to send_user before spawning the real process so the
-# bytes flow through the recorded PTY just like real typing would.
-proc type_command {cmd} {
-    send_user "\$ "
+# Type a command into the recording one char at a time, as if a human were typing it
+# at a shell prompt. asciinema has no built-in feature for this; the canonical idiom
+# is to print to send_user before spawning the real process so the bytes flow through
+# the recorded PTY just like real typing would. The caller emits the prompt itself
+# so the prompt can linger on screen during a "user thinking" pause before the first
+# keystroke arrives.
+proc type_chars {cmd} {
     foreach c [split $cmd ""] {
         send_user -- $c
         after [expr {40 + int(rand() * 80)}]
@@ -32,8 +33,11 @@ proc type_command {cmd} {
     send_user "\r\n"
 }
 
+# Render the prompt first and hold it on screen for a beat, so the viewer reads it
+# as a shell that's ready and waiting before the user starts typing.
+send_user "\$ "
 sleep 0.8
-type_command $cmd
+type_chars $cmd
 sleep 0.4
 
 # Run the real command. `-noecho` suppresses spawn's default `spawn octowrap ...`

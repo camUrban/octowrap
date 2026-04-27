@@ -6,10 +6,10 @@ def describe() -> str:
     return "octowrap rewraps comments without touching code"
 
 
-# TODO: tighten this example once the upstream serializer lands -- the current placeholder is just here to make the interactive demo show off how TODO continuation lines are rewrapped with a one-space hanging indent.
+# TODO: implement once the websocket protocol stabilizes -- waiting on the upstream spec PR before we commit to a wire format, since changing it later means coordinated client/server releases nobody wants to plan around.
 def pending() -> None:
     pass
 
 
 def add(a: int, b: int) -> int:
-    return a + b  # adds two integers together and returns the result, which is exactly the kind of trailing comment octowrap will hoist above the code line and rewrap normally
+    return a + b  # use the + operator rather than operator.add so the traceback points at this line if a or b are the wrong type, instead of vanishing into the operator module
