@@ -617,6 +617,28 @@ class TestInteractivePerParagraph:
         )
         # fmt: on
 
+    def test_diff_divider_width_matches_wrap_target_plus_prefix(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """The diff dividers in interactive mode are *max_line_length + 2* wide so they
+        extend past the two-character ``- `` / ``+ `` prefix and visually frame the wrap
+        target."""
+        f = tmp_path / "t.py"
+        f.write_bytes(self._mixed_block_content())
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "a")
+
+        process_file(f, max_line_length=120, interactive=True)
+
+        out = capsys.readouterr().out
+        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "─"]
+        assert divider_lines, "expected at least one divider in interactive output"
+        # 120 (wrap target) + 2 ("- "/"+ " prefix) = 122.
+        assert all(len(ln) == 122 for ln in divider_lines), (
+            f"divider widths should be 122; got "
+            f"{sorted({len(ln) for ln in divider_lines})}"
+        )
+
     def test_prose_and_todo_prompted_separately(self, tmp_path, monkeypatch):
         """A block with prose + TODO triggers exactly two prompts."""
         f = tmp_path / "t.py"

@@ -78,6 +78,28 @@ class TestShowBlockDiff:
         assert "src/example.py" in out
         assert "Lines 1-1:" in out
 
+    def test_divider_width_defaults_to_88(self, capsys, monkeypatch):
+        """With no explicit width, the dividers default to the standard wrap target of
+        88 characters, matching the default --line-length."""
+        monkeypatch.setattr(
+            "octowrap.rewrap._USE_COLOR", False
+        )  # plain '─', no color codes
+        show_block_diff(["# a"], ["# b"], 0)
+        out = capsys.readouterr().out
+        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "─"]
+        assert len(divider_lines) == 2
+        assert all(len(ln) == 88 for ln in divider_lines)
+
+    def test_divider_width_tracks_explicit_width(self, capsys, monkeypatch):
+        """*divider_width* sets the rule width so the visual frame matches the active
+        ``max_line_length`` instead of a hard-coded 60."""
+        monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
+        show_block_diff(["# a"], ["# b"], 0, divider_width=120)
+        out = capsys.readouterr().out
+        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "─"]
+        assert len(divider_lines) == 2
+        assert all(len(ln) == 120 for ln in divider_lines)
+
     def test_no_filepath_omits_prefix(self, capsys):
         original = ["# a"]
         new = ["# b"]

@@ -955,10 +955,15 @@ def show_block_diff(
     start_line: int,
     filepath: str = "",
     progress: str = "",
+    divider_width: int = 88,
 ) -> bool:
     """Display a diff for a single comment block.
 
     Returns True if there are changes, False otherwise.
+
+    *divider_width* sets the character width of the top and bottom dividers.
+    Callers typically pass ``max_line_length + 2`` so the rule extends past the
+    two-character ``- `` / ``+ `` diff prefix and visually frames the wrap target.
     """
     if original_lines == new_lines:
         return False
@@ -971,14 +976,14 @@ def show_block_diff(
     if progress:
         header += " " + colorize(progress, "cyan")
     print(f"\n{header}")
-    print(colorize("─" * 60, "cyan"))
+    print(colorize("─" * divider_width, "cyan"))
 
     for line in original_lines:
         print(colorize(f"- {line}", "red"))
     for line in new_lines:
         print(colorize(f"+ {line}", "green"))
 
-    print(colorize("─" * 60, "cyan"))
+    print(colorize("─" * divider_width, "cyan"))
     return True
 
 
@@ -1069,7 +1074,7 @@ def prompt_user(can_undo: bool = True) -> str:
     """
     parts = [
         f"[{colorize('a', 'green')}]ccept",
-        f"accept [{colorize('A', 'green')}]ll",
+        f"[{colorize('A', 'green')}]ccept all (current file)",
         f"[{colorize('e', 'cyan')}]xclude",
         f"[{colorize('f', 'magenta')}]lag",
         f"[{colorize('s', 'yellow')}]kip",
@@ -1278,6 +1283,7 @@ def process_content(
                             block["start_idx"] + line_idx,
                             filepath=filepath,
                             progress=progress,
+                            divider_width=max_line_length + 2,
                         )
                         if not has_changes:
                             # Defensive: inline extraction always changes the line count
@@ -1505,6 +1511,7 @@ def process_content(
                     block["start_idx"] + unit["raw_start"],
                     filepath=filepath,
                     progress=progress,
+                    divider_width=max_line_length + 2,
                 )
 
                 can_undo = bool(_state is not None and _state.get("decisions"))
