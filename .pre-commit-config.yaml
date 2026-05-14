@@ -1,36 +1,91 @@
 repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  # Ruff version.
-  rev: v0.15.0
-  hooks:
-    # Run the linter.
-    - id: ruff-check
-      args: [--fix, --extend-select, I]
-    # Run the formatter.
-    - id: ruff-format
-- repo: https://github.com/codespell-project/codespell
-  rev: v2.4.1
-  hooks:
-    # Run codespell.
-    - id: codespell
-- repo: https://github.com/PyCQA/docformatter
-  rev: v1.7.7
-  hooks:
-    # Run docformatter.
-    - id: docformatter
-      additional_dependencies: [tomli]
-      args: [--in-place, --config, ./pyproject.toml]
-- repo: local
-  hooks:
-    - id: octowrap
-      name: octowrap
-      entry: octowrap
-      language: system
-      types: [python]
-    # No official hook yet (https://github.com/astral-sh/ty/issues/269).
-    - id: ty
-      name: ty check
-      entry: ty check .
-      language: system
-      pass_filenames: false
-      always_run: true
+  # Fixers: normalize bytes first so later hooks see clean files.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+        name: fixer    end-of-files
+      - id: trailing-whitespace
+        name: fixer    trailing-whitespace
+      - id: mixed-line-ending
+        name: fixer    mixed-line-endings
+        args: [--fix=lf]
+      - id: fix-byte-order-marker
+        name: fixer    byte-order-marks
+  # Auto-formatters: rewrite code on top of the normalized bytes.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 0470f7c8a653e950f7cc5a653204ceb3fde4c02a  # frozen: v0.15.0
+    hooks:
+      - id: ruff-check
+        name: fixer    ruff-check
+        args: [--fix, --extend-select, I]
+      - id: ruff-format
+        name: fixer    ruff-format
+  - repo: https://github.com/PyCQA/docformatter
+    rev: e73b8ba0c1316be565983236c72e653ad44e6b66  # frozen: v1.7.7
+    hooks:
+      - id: docformatter
+        name: fixer    docformatter
+        additional_dependencies: [tomli]
+        args: [--in-place, --config, ./pyproject.toml]
+  - repo: local
+    hooks:
+      - id: octowrap
+        name: fixer    octowrap
+        entry: octowrap
+        language: system
+        types: [python]
+  # Validators: read-only, run against the final state.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+        name: checker  merge-conflicts
+      - id: check-case-conflict
+        name: checker  case-conflicts
+      - id: check-illegal-windows-names
+        name: checker  illegal-names
+      - id: check-symlinks
+        name: checker  lost-symlinks
+      - id: destroyed-symlinks
+        name: checker  destroyed-symlinks
+      - id: check-yaml
+        name: checker  yaml-files
+      - id: check-toml
+        name: checker  toml-files
+      - id: check-json
+        name: checker  json-files
+      - id: detect-private-key
+        name: checker  private-keys
+      - id: forbid-submodules
+        name: checker  submodules
+      - id: check-vcs-permalinks
+        name: checker  vcs-permalinks
+      - id: check-executables-have-shebangs
+        name: checker  exec-shebangs
+      - id: check-shebang-scripts-are-executable
+        name: checker  shebang-execs
+      - id: check-added-large-files
+        name: checker  large-files
+      - id: debug-statements
+        name: checker  debug-statements
+  - repo: https://github.com/codespell-project/codespell
+    rev: 63c8f8312b7559622c0d82815639671ae42132ac  # frozen: v2.4.1
+    hooks:
+      - id: codespell
+        name: checker  codespell
+  - repo: local
+    hooks:
+      - id: ascii-only
+        name: checker  ascii-only
+        entry: python scripts/check_ascii_only.py
+        language: system
+        types: [text]
+        exclude: '\.svg$'
+      - id: ty
+        # No official hook yet (https://github.com/astral-sh/ty/issues/269).
+        name: checker  ty
+        entry: ty check .
+        language: system
+        pass_filenames: false
+        always_run: true

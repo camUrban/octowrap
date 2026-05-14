@@ -167,7 +167,7 @@ def is_section_header(text: str) -> bool:
 def is_list_item(text: str) -> bool:
     """Check if a comment line is a list item or bullet point."""
     list_patterns = [
-        r"^\s*[-*•]\s+",  # bullet points
+        r"^\s*[-*\u2022]\s+",  # bullet points
         r"^\s*\d+[.)]\s+",  # numbered lists
         r"^\s*[a-zA-Z][.)]\s+",  # lettered lists
     ]
@@ -340,7 +340,7 @@ def extract_list_marker(text: str) -> tuple[str, str]:
     whitespace (nesting indent).  Returns ``("", text)`` on no match.
     """
     list_patterns = [
-        r"^(\s*[-*•]\s+)(.*)",  # bullet points
+        r"^(\s*[-*\u2022]\s+)(.*)",  # bullet points
         r"^(\s*\d+[.)]\s+)(.*)",  # numbered lists
         r"^(\s*[a-zA-Z][.)]\s+)(.*)",  # lettered lists
     ]
@@ -976,14 +976,14 @@ def show_block_diff(
     if progress:
         header += " " + colorize(progress, "cyan")
     print(f"\n{header}")
-    print(colorize("─" * divider_width, "cyan"))
+    print(colorize("\u2500" * divider_width, "cyan"))
 
     for line in original_lines:
         print(colorize(f"- {line}", "red"))
     for line in new_lines:
         print(colorize(f"+ {line}", "green"))
 
-    print(colorize("─" * divider_width, "cyan"))
+    print(colorize("\u2500" * divider_width, "cyan"))
     return True
 
 

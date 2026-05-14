@@ -83,10 +83,10 @@ class TestShowBlockDiff:
         88 characters, matching the default --line-length."""
         monkeypatch.setattr(
             "octowrap.rewrap._USE_COLOR", False
-        )  # plain '─', no color codes
+        )  # plain '\u2500', no color codes
         show_block_diff(["# a"], ["# b"], 0)
         out = capsys.readouterr().out
-        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "─"]
+        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "\u2500"]
         assert len(divider_lines) == 2
         assert all(len(ln) == 88 for ln in divider_lines)
 
@@ -96,7 +96,7 @@ class TestShowBlockDiff:
         monkeypatch.setattr("octowrap.rewrap._USE_COLOR", False)
         show_block_diff(["# a"], ["# b"], 0, divider_width=120)
         out = capsys.readouterr().out
-        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "─"]
+        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "\u2500"]
         assert len(divider_lines) == 2
         assert all(len(ln) == 120 for ln in divider_lines)
 

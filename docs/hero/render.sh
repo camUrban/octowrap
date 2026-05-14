@@ -20,5 +20,8 @@ rows=38
 asciinema rec --overwrite --cols "$cols" --rows "$rows" \
     --command ./record.exp demo.cast
 svg-term --in demo.cast --out demo.svg --window --padding 16
+# svg-term-cli omits the trailing newline; append one so pre-commit's
+# end-of-file-fixer leaves the file alone on subsequent runs.
+printf '\n' >> demo.svg
 
 echo "Wrote $(pwd)/demo.svg"
