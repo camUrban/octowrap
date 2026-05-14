@@ -14,7 +14,7 @@ repos:
         name: fixer    byte-order-marks
   # Auto-formatters: rewrite code on top of the normalized bytes.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 0470f7c8a653e950f7cc5a653204ceb3fde4c02a  # frozen: v0.15.0
+    rev: 6fec9b7edb08fd9989088709d864a7826dc74e80  # frozen: v0.15.12
     hooks:
       - id: ruff-check
         name: fixer    ruff-check
@@ -22,7 +22,7 @@ repos:
       - id: ruff-format
         name: fixer    ruff-format
   - repo: https://github.com/PyCQA/docformatter
-    rev: e73b8ba0c1316be565983236c72e653ad44e6b66  # frozen: v1.7.7
+    rev: 0032269a0e65c068af9cd86c9a8859a0ddd568d6  # frozen: v1.7.8
     hooks:
       - id: docformatter
         name: fixer    docformatter
@@ -70,7 +70,7 @@ repos:
       - id: debug-statements
         name: checker  debug-statements
   - repo: https://github.com/codespell-project/codespell
-    rev: 63c8f8312b7559622c0d82815639671ae42132ac  # frozen: v2.4.1
+    rev: 2ccb47ff45ad361a21071a7eedda4c37e6ae8c5a  # frozen: v2.4.2
     hooks:
       - id: codespell
         name: checker  codespell
