@@ -5,6 +5,13 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -15,16 +22,20 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package and pytest
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
-          uv sync --no-dev --python ${{ matrix.python-version }}
+          uv sync --no-dev --python "$PYTHON_VERSION"
           uv pip install pytest
 
       - name: Run tests
@@ -33,10 +44,12 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           # noinspection UndefinedParamsPresent
           python-version: "3.13"
@@ -50,10 +63,12 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.13"
 

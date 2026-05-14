@@ -631,7 +631,7 @@ class TestInteractivePerParagraph:
         process_file(f, max_line_length=120, interactive=True)
 
         out = capsys.readouterr().out
-        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "─"]
+        divider_lines = [ln for ln in out.splitlines() if ln and ln[0] == "\u2500"]
         assert divider_lines, "expected at least one divider in interactive output"
         # 120 (wrap target) + 2 ("- "/"+ " prefix) = 122.
         assert all(len(ln) == 122 for ln in divider_lines), (
