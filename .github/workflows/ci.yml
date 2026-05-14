@@ -32,6 +32,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package and pytest
+        # Force bash so $PYTHON_VERSION expands the same way on Windows
+        # runners (whose default shell is PowerShell).
+        shell: bash
         env:
           PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
