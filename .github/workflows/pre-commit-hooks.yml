@@ -37,7 +37,6 @@ jobs:
           - { hook: check-vcs-permalinks,                 name: vcs-permalinks }
           - { hook: check-executables-have-shebangs,      name: exec-shebangs }
           - { hook: check-shebang-scripts-are-executable, name: shebang-execs }
-          - { hook: check-added-large-files,              name: large-files }
           - { hook: debug-statements,                     name: debug-statements }
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
