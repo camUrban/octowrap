@@ -129,7 +129,7 @@ class TestProcessContentInline:
         assert lines[-1] == "x = some_really_long_function_call(arg1, arg2)"
 
     def test_tool_directive_preserved(self):
-        """type: ignore and other directives are never extracted."""
+        """Type: ignore and other directives are never extracted."""
         # Build a line that overflows but has a tool directive
         code = "x" * 80
         content = f"{code}  # type: ignore[assignment]\n"

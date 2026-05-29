@@ -78,17 +78,24 @@ jobs:
       - name: Install development dependencies
         run: uv sync
 
+      # Run the formatters and linters through pre-commit so CI uses the exact
+      # frozen revs pinned in .pre-commit-config.yaml rather than the versions
+      # uv resolves from uv.lock. pre-commit's fixer hooks (ruff, docformatter)
+      # rewrite files in place and exit non-zero when anything changed, which
+      # makes them function as checks here.
       - name: Ruff check
-        run: uv run ruff check .
+        run: uv run pre-commit run --all-files ruff-check
 
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run pre-commit run --all-files ruff-format
 
       - name: codespell
-        run: uv run codespell
+        run: uv run pre-commit run --all-files codespell
 
       - name: docformatter
-        run: uv run docformatter --check --diff --config ./pyproject.toml .
+        run: uv run pre-commit run --all-files docformatter
 
+      # octowrap is a local (language: system) hook, so its version is fixed by
+      # the install above either way; run its check directly.
       - name: octowrap check
         run: uv run octowrap --check .
