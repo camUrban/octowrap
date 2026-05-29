@@ -1406,8 +1406,8 @@ class TestUndoAction:
         )
 
     def test_in_file_undo_of_accept(self, tmp_path, monkeypatch):
-        """Sequence a a u s s on three paragraphs: undo pops the second a;
-        re-prompted at paragraph 2 the user picks s; paragraph 3 then s."""
+        """Sequence a a u s s on three paragraphs: undo pops the second a; re-prompted
+        at paragraph 2 the user picks s; paragraph 3 then s."""
         f = tmp_path / "t.py"
         self._make_three_paragraph_file(f)
         responses = iter(["a", "a", "u", "s", "s"])
@@ -1423,8 +1423,8 @@ class TestUndoAction:
         assert actions == ["a", "s", "s"]
 
     def test_in_file_undo_of_skip(self, tmp_path, monkeypatch):
-        """Sequence s u a a on three paragraphs: undo pops the s at
-        paragraph 1; re-prompted there the user picks a; finishes with a, a."""
+        """Sequence s u a a on three paragraphs: undo pops the s at paragraph 1; re-
+        prompted there the user picks a; finishes with a, a."""
         f = tmp_path / "t.py"
         self._make_three_paragraph_file(f)
         responses = iter(["s", "u", "a", "a", "a"])

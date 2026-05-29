@@ -335,9 +335,9 @@ def extract_todo_marker(
 def extract_list_marker(text: str) -> tuple[str, str]:
     """Extract list marker prefix and remaining content.
 
-    Returns ``(marker_prefix, content)``, e.g. ``("- ", "fix the bug")`` or
-    ``("  1. ", "first item")``.  The ``marker_prefix`` includes any leading
-    whitespace (nesting indent).  Returns ``("", text)`` on no match.
+    Returns ``(marker_prefix, content)``, e.g. ``("- ", "fix the bug")`` or ``("  1. ",
+    "first item")``.  The ``marker_prefix`` includes any leading whitespace (nesting
+    indent).  Returns ``("", text)`` on no match.
     """
     list_patterns = [
         r"^(\s*[-*\u2022]\s+)(.*)",  # bullet points
@@ -358,15 +358,16 @@ def _join_comment_lines(lines: list[str]) -> str:
     When a line ends with ``<letter>-`` and the next line starts with a letter, they are
     assumed to be fragments of a single hyphenated word and are joined without an
     intervening space.  When a line ends with an opening bracket (``(`` or ``[``) or the
-    next line starts with a closing bracket (``)`` or ``]``), the lines are joined without
-    a space to avoid introducing erroneous whitespace inside parenthesised text.  All
-    other consecutive lines are joined with a single space, matching the behavior of
+    next line starts with a closing bracket (``)`` or ``]``), the lines are joined
+    without a space to avoid introducing erroneous whitespace inside parenthesised text.
+    All other consecutive lines are joined with a single space, matching the behavior of
     ``" ".join()``.
 
-    After joining, any remaining whitespace immediately inside brackets (``( x``, ``x )``,
-    ``[ y``, ``y ]``) is stripped.  Such whitespace is typically an artifact of a prior
-    wrap that placed the bracket at the end (or start) of a line; removing it prevents
-    ``textwrap`` from breaking between the bracket and its contents on the next pass.
+    After joining, any remaining whitespace immediately inside brackets (``( x``, ``x
+    )``, ``[ y``, ``y ]``) is stripped.  Such whitespace is typically an artifact of a
+    prior wrap that placed the bracket at the end (or start) of a line; removing it
+    prevents ``textwrap`` from breaking between the bracket and its contents on the next
+    pass.
     """
     if not lines:
         return ""
@@ -665,11 +666,11 @@ def _block_prompt_units(
 ) -> list[dict]:
     """Split *block* into per-prompt rewrap units.
 
-    Each returned dict has ``raw_start`` (offset into ``block["lines"]``),
-    ``original`` (the original raw lines for this unit), and ``rewrapped`` (the
-    rewrapped output lines for this unit).  Consecutive list-item paragraphs are
-    merged into a single unit so that a multi-item list is presented as one logical
-    change rather than item by item.
+    Each returned dict has ``raw_start`` (offset into ``block["lines"]``), ``original``
+    (the original raw lines for this unit), and ``rewrapped`` (the rewrapped output
+    lines for this unit).  Consecutive list-item paragraphs are merged into a single
+    unit so that a multi-item list is presented as one logical change rather than item
+    by item.
     """
     indent = block["indent"]
     raw_lines = block["lines"]
@@ -743,8 +744,8 @@ def rewrap_comment_block(
 ) -> list[str]:
     """Rewrap a comment block to the specified line length.
 
-    Returns the full flat list of rewrapped ``# ...`` output lines, concatenated
-    across paragraph prompt units.
+    Returns the full flat list of rewrapped ``# ...`` output lines, concatenated across
+    paragraph prompt units.
     """
     units = _block_prompt_units(
         block,
@@ -785,10 +786,10 @@ def _should_extract_inline(
 ) -> bool:
     """Return ``True`` if *line* has an inline comment that should be extracted.
 
-    When *valid_positions* is not ``None``, the ``#`` index found on *line* is
-    cross-checked against tokenize-derived comment starts to avoid false positives
-    such as a ``#`` inside a multi-line string literal.  *line_no* is the 1-indexed
-    line number in the source file.
+    When *valid_positions* is not ``None``, the ``#`` index found on *line* is cross-
+    checked against tokenize-derived comment starts to avoid false positives such as a
+    ``#`` inside a multi-line string literal.  *line_no* is the 1-indexed line number in
+    the source file.
     """
     if len(line) <= max_line_length:
         return False
@@ -961,9 +962,9 @@ def show_block_diff(
 
     Returns True if there are changes, False otherwise.
 
-    *divider_width* sets the character width of the top and bottom dividers.
-    Callers typically pass ``max_line_length + 2`` so the rule extends past the
-    two-character ``- `` / ``+ `` diff prefix and visually frames the wrap target.
+    *divider_width* sets the character width of the top and bottom dividers. Callers
+    typically pass ``max_line_length + 2`` so the rule extends past the two-character
+    ``- `` / ``+ `` diff prefix and visually frames the wrap target.
     """
     if original_lines == new_lines:
         return False
@@ -990,23 +991,21 @@ def show_block_diff(
 def _getch() -> str:
     """Read one logical keypress without waiting for Enter.
 
-    Multi-byte input (arrow keys, function keys, Windows special keys, partial
-    escape sequences left in the buffer by a paste) is consumed in full and
-    reported as the empty string.  This prevents the trailing byte of an
-    escape sequence (notably the ``A`` in ``\\x1b[A`` for up arrow) from being
-    misread as a one-letter command, and prevents a paste's tail bytes from
-    bleeding into the next prompt.
+    Multi-byte input (arrow keys, function keys, Windows special keys, partial escape
+    sequences left in the buffer by a paste) is consumed in full and reported as the
+    empty string.  This prevents the trailing byte of an escape sequence (notably the
+    ``A`` in ``\\x1b[A`` for up arrow) from being misread as a one-letter command, and
+    prevents a paste's tail bytes from bleeding into the next prompt.
 
-    Uses platform specific APIs (msvcrt on Windows, termios/tty/select on
-    Unix), imported locally to avoid cross-platform resolution issues.
+    Uses platform specific APIs (msvcrt on Windows, termios/tty/select on Unix),
+    imported locally to avoid cross-platform resolution issues.
 
-    On Unix, reads go through ``os.read`` on the raw stdin file descriptor
-    rather than ``sys.stdin.read``.  ``sys.stdin`` is a buffered TextIOWrapper
-    that may pre-fetch additional bytes from the kernel pipe on the first
-    read; if it does, those bytes sit in Python's buffer where neither
-    ``select.select`` nor ``termios.tcflush`` can see them, and the next
-    ``read`` would surface them as bogus keypresses (e.g. the ``A`` in an up
-    arrow's ``\\x1b[A`` being misread as ``accept all``).  Using ``os.read``
+    On Unix, reads go through ``os.read`` on the raw stdin file descriptor rather than
+    ``sys.stdin.read``.  ``sys.stdin`` is a buffered TextIOWrapper that may pre-fetch
+    additional bytes from the kernel pipe on the first read; if it does, those bytes sit
+    in Python's buffer where neither ``select.select`` nor ``termios.tcflush`` can see
+    them, and the next ``read`` would surface them as bogus keypresses (e.g. the ``A``
+    in an up arrow's ``\\x1b[A`` being misread as ``accept all``).  Using ``os.read``
     keeps every byte at the OS layer where the drain logic can reach it.
     """
     if sys.platform == "win32":
@@ -1128,9 +1127,9 @@ def process_content(
     """Rewrap comment blocks in a string of Python source.
 
     Returns ``(changed, new_content, status)`` where ``status`` is one of
-    ``"complete"``, ``"quit"``, or ``"rewind"``. When *_state* is a dict and the
-    user presses quit in interactive mode, ``_state["quit"]`` is also set to
-    ``True`` for backward compatibility with the pre-status callers.
+    ``"complete"``, ``"quit"``, or ``"rewind"``. When *_state* is a dict and the user
+    presses quit in interactive mode, ``_state["quit"]`` is also set to ``True`` for
+    backward compatibility with the pre-status callers.
 
     When *changed_lines* is not ``None``, only comment blocks whose line range overlaps
     the given set of 0-based line indices are processed.  Blocks with no overlap are
@@ -1138,14 +1137,14 @@ def process_content(
 
     When *decisions* is provided, each ``Decision``'s recorded action is replayed
     silently when its cursor is encountered during iteration; ``prompt_user()`` is
-    skipped. The cursor at *rewind_to_cursor* (if any) is the exception: that
-    position is always prompted, even if a decision exists for it. This is how
-    Phase 4's undo feature re-enters mid-file at the popped position.
+    skipped. The cursor at *rewind_to_cursor* (if any) is the exception: that position
+    is always prompted, even if a decision exists for it. This is how Phase 4's undo
+    feature re-enters mid-file at the popped position.
 
-    When *replay_only* is True, the function never prompts: cursors with a
-    matching decision replay it; cursors without a decision default to skip
-    (preserve original). This is the mode used by ``_flush_dirty_at_quit`` to
-    reconcile on-disk content with the final decision log at session end.
+    When *replay_only* is True, the function never prompts: cursors with a matching
+    decision replay it; cursors without a decision default to skip (preserve original).
+    This is the mode used by ``_flush_dirty_at_quit`` to reconcile on-disk content with
+    the final decision log at session end.
     """
     lines = content.splitlines(keepends=True)
 
@@ -1642,10 +1641,9 @@ def _drive_file(
 ) -> tuple[bool, str]:
     """Read *filepath* and run ``process_content``; no file writes.
 
-    Pure read + transform; the caller decides whether to persist. Returns
-    ``(changed, new_content)``. The third element of ``process_content``'s
-    return (``status``) is dropped because the non-interactive path always
-    completes normally.
+    Pure read + transform; the caller decides whether to persist. Returns ``(changed,
+    new_content)``. The third element of ``process_content``'s return (``status``) is
+    dropped because the non-interactive path always completes normally.
     """
     with open(filepath, encoding="utf-8", newline="") as f:
         content = f.read()
@@ -1884,9 +1882,8 @@ def process_file(
 ) -> tuple[bool, str]:
     """Process a single file, rewrapping comment blocks.
 
-    Returns (changed, new_content). Interactive runs are routed through
-    ``_run_session`` so single-file callers exercise the same replay-aware
-    driver that ``main()`` uses.
+    Returns (changed, new_content). Interactive runs are routed through ``_run_session``
+    so single-file callers exercise the same replay-aware driver that ``main()`` uses.
     """
     if interactive and not dry_run:
         state = _init_session_state(_state)

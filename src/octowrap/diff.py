@@ -58,8 +58,8 @@ def get_changed_lines(base: str = "HEAD") -> dict[str, set[int]]:
     """Run ``git diff -U0`` against *base* and return per-file changed line numbers.
 
     Returns a dict mapping file paths (relative to the repo root) to sets of 0-based
-    line indices.  Raises :class:`NotAGitRepoError` if not inside a git repository or
-    if git is not installed.
+    line indices.  Raises :class:`NotAGitRepoError` if not inside a git repository or if
+    git is not installed.
     """
     try:
         result = subprocess.run(
