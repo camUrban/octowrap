@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Two `is_likely_code()` false positives no longer split a prose paragraph into multiple prompt units. First, a wrap-induced line ending exactly at a parenthetical's closing paren (e.g. `# Subtract (thisBlpp_GP1_CgP1 - lastBlpp_GP1_CgP1)`) matched the function-call pattern because it allowed whitespace between the name and the opening paren; the pattern now requires the paren to touch the name (`foo(...)`), matching real call syntax while releasing prose parentheticals. Second, a sentence ending in a code-shaped fragment (e.g. `# delta_time = lcm_period / num_steps.`) matched the assignment pattern; `_looks_like_prose()` now treats a sentence-final period as a prose signal, since a bare trailing `.` is invalid Python syntax unless it completes a float literal (`x = 1.`) or an ellipsis (`x = ...`), both of which are still detected as code. Previously either false positive fractured the surrounding comment block into a preserved "code" line plus a separate wrap paragraph, producing two interactive prompts and a wrap that excluded the misclassified line's words.
+
 ## 0.6.1 - 2026-04-27
 
 ### Fixed

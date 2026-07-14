@@ -87,7 +87,8 @@ def _looks_like_prose(text: str) -> bool:
     Called as a second pass after a code-pattern matched, to rescue false positives such
     as "if the server is down:" or "return the result".
     """
-    lower = text.strip().lower()
+    stripped = text.strip()
+    lower = stripped.lower()
     determiners = r"(?:the|this|that|these|those)"
     keywords = r"(?:if|while|with|return|raise|import|assert|yield)"
     # keyword + determiner + word  (e.g. "if the server ...")
@@ -95,6 +96,16 @@ def _looks_like_prose(text: str) -> bool:
         return True
     # "return to ..."  (e.g. "return to the caller")
     if re.match(r"return\s+to\s+", lower):
+        return True
+    # A sentence-final period (e.g. "delta_time = lcm_period / num_steps."). A bare
+    # trailing "." is invalid Python syntax unless it completes a float literal ("x =
+    # 1.") or an ellipsis ("x = ..."), so anything else ending in "." reads as prose.
+    if (
+        len(stripped) >= 2
+        and stripped.endswith(".")
+        and not stripped[-2].isdigit()
+        and stripped[-2] != "."
+    ):
         return True
     return False
 
@@ -122,7 +133,8 @@ def is_likely_code(text: str) -> bool:
         r"^\s*print\s*\(",  # print call
         r"^\s*self\.",  # self reference
         r"^\s*\w+\.\w+\(",  # method call
-        r"^\s*\w+\s*\([^)]*\)\s*$",  # function call
+        r"^\s*\w+\([^)]*\)\s*$",  # function call (no space before the paren: prose
+        # like "Subtract (this - that)" wraps a parenthetical, not an argument list)
     ]
     if not any(re.match(p, text) for p in code_patterns):
         return False

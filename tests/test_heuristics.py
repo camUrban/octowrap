@@ -42,6 +42,8 @@ class TestIsLikelyCode:
             "self.value = 10",
             "obj.method(arg)",
             "foo(bar)",
+            "x = 1.",
+            "x = ...",
         ],
         ids=[
             "assignment",
@@ -66,6 +68,8 @@ class TestIsLikelyCode:
             "self",
             "method_call",
             "function_call",
+            "float_literal_assignment",
+            "ellipsis_assignment",
         ],
     )
     def test_detects_code(self, text):
@@ -90,6 +94,8 @@ class TestIsLikelyCode:
             "while the process is running:",
             "yield the right results",
             "def improve the code quality",
+            "Subtract (this_value - that_value)",
+            "delta_time = lcm_period / num_steps.",
         ],
         ids=[
             "plain_english",
@@ -108,6 +114,8 @@ class TestIsLikelyCode:
             "while_the",
             "yield_the",
             "def_no_paren",
+            "spaced_parenthetical",
+            "assignment_trailing_period",
         ],
     )
     def test_rejects_prose(self, text):
@@ -133,6 +141,8 @@ class TestLooksLikeProse:
             "return to the caller",
             "return to previous state",
             "assert that it works",
+            "delta_time = lcm_period / num_steps.",
+            "geometry axes). This is the vector pointing opposite the motion.",
         ],
         ids=[
             "if_the",
@@ -148,6 +158,8 @@ class TestLooksLikeProse:
             "return_to_the",
             "return_to_previous",
             "assert_that_it",
+            "trailing_period",
+            "sentence_fragment_trailing_period",
         ],
     )
     def test_detects_prose(self, text):
@@ -166,6 +178,8 @@ class TestLooksLikeProse:
             "yield value",
             "return a",
             "if a is None:",
+            "x = 1.",
+            "x = ...",
         ],
         ids=[
             "if_code",
@@ -178,6 +192,8 @@ class TestLooksLikeProse:
             "yield_code",
             "return_single_var",
             "if_single_var",
+            "float_literal",
+            "ellipsis",
         ],
     )
     def test_rejects_code(self, text):

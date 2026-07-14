@@ -1,6 +1,8 @@
 from conftest import make_block
 
+# noinspection PyProtectedMember
 from octowrap.rewrap import (
+    _block_prompt_units,
     is_section_header,
     parse_pragma,
     rewrap_comment_block,
@@ -54,6 +56,52 @@ def test_divider_preserved():
     )
     result = rewrap_comment_block(block, max_line_length=88)
     assert "# ----------------------------------------" in result
+
+
+class TestProseMistakenForCode:
+    """Prose lines that merely look like code must not split their paragraph.
+
+    Regression tests for two real-world false positives: a wrap-induced line ending
+    exactly at a parenthetical's closing paren ("Subtract (a - b)") matched the
+    function-call pattern, and a sentence-final assignment ("delta_time = a / b.")
+    matched the assignment pattern. Either one fractured the block into a preserved
+    line plus a separate wrap paragraph.
+    """
+
+    def test_spaced_parenthetical_stays_in_paragraph(self):
+        indent = " " * 32
+        block = make_block(
+            [
+                f"{indent}# Subtract (thisBlpp_GP1_CgP1 - lastBlpp_GP1_CgP1)",
+                f"{indent}# / self.delta_time from vInf_GP1__E to get the",
+                f"{indent}# apparent fluid velocity due to motion (observed",
+                f"{indent}# from the Earth frame, in the first Airplane's",
+                f"{indent}# geometry axes). This is the vector pointing",
+                f"{indent}# opposite the velocity from motion.",
+            ],
+            indent=indent,
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+        assert all(len(line) <= 88 for line in units[0]["rewrapped"])
+
+    def test_trailing_period_assignment_stays_in_paragraph(self):
+        indent = " " * 8
+        block = make_block(
+            [
+                f"{indent}# Mock the cached batch evaluator to return mismatches that"
+                " increase",
+                f"{indent}# with num_steps, so the best is at min_num_steps (lower"
+                " bound = largest",
+                f"{indent}# delta_time). This mirrors the original 1.0 / delta_time"
+                " shape via",
+                f"{indent}# delta_time = lcm_period / num_steps.",
+            ],
+            indent=indent,
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+        assert all(len(line) <= 88 for line in units[0]["rewrapped"])
 
 
 class TestSectionHeader:
@@ -777,10 +825,10 @@ class TestListWrap:
 
     def test_deeply_nested_too_narrow_preserves(self):
         """A deeply nested list marker that makes available width < 10 preserves."""
-        # Content "          - text" has marker "          - " (12 chars).
-        # initial = "# " + "          - " = 14 chars.
-        # At width 22: first_width = 22-14 = 8 < 10, triggers preserve.
-        # text_width = 22-2 = 20 >= 20, so the early return does not fire.
+        # Content "          - text" has marker "          - " (12 chars). initial = "#
+        # " + "          - " = 14 chars. At width 22: first_width = 22-14 = 8 < 10,
+        # triggers preserve. text_width = 22-2 = 20 >= 20, so the early return does not
+        # fire.
         block = make_block(
             ["#           - deeply nested item"],
         )
