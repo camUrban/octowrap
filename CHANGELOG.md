@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.2 - 2026-07-14
 
 ### Fixed
 - Dotted multi-level list numbering (e.g. `# 5.1. Reference the base Wing.` or `# 5.5.1. ...`) is now recognized by `is_list_item()` and `extract_list_marker()`. Previously only single-level markers (`1.`, `a.`, `-`) matched, so every dotted sub-item in a nested procedure list was classified as ordinary prose, and consecutive sub-items were joined and refilled into one run-on paragraph, destroying the list structure and embedding the continuation-alignment spaces mid-text. Dotted chains may mix digit and letter segments (`5.a.`, `5.iv.`) but must start with a digit: a letter-led chain would also match abbreviations like `e.g. ` at the start of a prose line. Plain nested lettering under a numbered level (indented `a.` items) was already supported. Recognized sub-items rewrap with hanging indent at their own nesting level, and continuation lines indented to the marker's text column are collected into their item as before.
