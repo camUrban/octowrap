@@ -1,6 +1,8 @@
 from conftest import make_block
 
+# noinspection PyProtectedMember
 from octowrap.rewrap import (
+    _block_prompt_units,
     is_section_header,
     parse_pragma,
     rewrap_comment_block,
@@ -54,6 +56,68 @@ def test_divider_preserved():
     )
     result = rewrap_comment_block(block, max_line_length=88)
     assert "# ----------------------------------------" in result
+
+
+class TestProseMistakenForCode:
+    """Prose lines that merely look like code must not split their paragraph.
+
+    Regression tests for two real-world false positives: a wrap-induced line ending
+    exactly at a parenthetical's closing paren ("Subtract (a - b)") matched the
+    function-call pattern, and a sentence-final assignment ("delta_time = a / b.")
+    matched the assignment pattern. Either one fractured the block into a preserved
+    line plus a separate wrap paragraph.
+    """
+
+    def test_spaced_parenthetical_stays_in_paragraph(self):
+        indent = " " * 32
+        block = make_block(
+            [
+                f"{indent}# Subtract (thisBlpp_GP1_CgP1 - lastBlpp_GP1_CgP1)",
+                f"{indent}# / self.delta_time from vInf_GP1__E to get the",
+                f"{indent}# apparent fluid velocity due to motion (observed",
+                f"{indent}# from the Earth frame, in the first Airplane's",
+                f"{indent}# geometry axes). This is the vector pointing",
+                f"{indent}# opposite the velocity from motion.",
+            ],
+            indent=indent,
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+        assert all(len(line) <= 88 for line in units[0]["rewrapped"])
+
+    def test_trailing_period_assignment_stays_in_paragraph(self):
+        indent = " " * 8
+        block = make_block(
+            [
+                f"{indent}# Mock the cached batch evaluator to return mismatches that"
+                " increase",
+                f"{indent}# with num_steps, so the best is at min_num_steps (lower"
+                " bound = largest",
+                f"{indent}# delta_time). This mirrors the original 1.0 / delta_time"
+                " shape via",
+                f"{indent}# delta_time = lcm_period / num_steps.",
+            ],
+            indent=indent,
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+        assert all(len(line) <= 88 for line in units[0]["rewrapped"])
+
+    def test_mid_sentence_assignment_stays_in_paragraph(self):
+        """A code-shaped fragment mid-sentence must not split the paragraph, even when
+        the prior wrap left the sentence boundary mid-line (so the sentence-final-
+        period rescue cannot fire); the bare-word-run signal catches it instead."""
+        block = make_block(
+            [
+                "# Comparison axis: index i in [0, num_steps - 2] maps to",
+                "# step = i + 1, prev_step = i. Slice the panel arrays accordingly so",
+                "# bound and wake area calculations can run as one vectorized batch",
+                "# rather than a Python step loop.",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+        assert all(len(line) <= 88 for line in units[0]["rewrapped"])
 
 
 class TestSectionHeader:
@@ -659,6 +723,58 @@ class TestListWrap:
         assert "continuation text" in full_text
         assert "previously wrapped short" in full_text
 
+    def test_dotted_nested_items_stay_separate(self):
+        """Dotted multi-level numbering (5.1., 5.5.1.) must parse as list items, not
+        prose, so nested procedure steps are never merged into a run-on paragraph.
+
+        Overflowing items rewrap with hanging indent; continuation lines indented to the
+        marker's text column are collected into their item.
+        """
+        indent = "    "
+        block = make_block(
+            [
+                f"{indent}# 5. Iterate over the WingMovements.",
+                f"{indent}#   5.1. Reference the WingMovement's base Wing.",
+                f"{indent}#   5.2. Create an empty list for the WingCrossSectionMovements'"
+                " base WingCrossSection",
+                f"{indent}#        copies.",
+                f"{indent}#     5.5.1. Reference the WingCrossSectionMovement's base"
+                " WingCrossSection.",
+                f"{indent}#   5.3. Create a copy of the base Wing.",
+            ],
+            indent=indent,
+        )
+        result = rewrap_comment_block(block, max_line_length=88)
+        markers = ["# 5. ", "#   5.1. ", "#   5.2. ", "#     5.5.1. ", "#   5.3. "]
+        for marker in markers:
+            assert sum(line.startswith(indent + marker) for line in result) == 1
+        # The 5.2 continuation ("copies.") is collected and rewrapped, not merged into a
+        # following item or left as a stray fragment.
+        assert not any(line.strip() == "#        copies." for line in result)
+        for line in result:
+            assert len(line) <= 88
+
+    def test_mixed_numeral_and_letter_nesting(self):
+        """Numerals on the outer level and letters on the inner level wrap as separate
+        items, each at its own indent."""
+        block = make_block(
+            [
+                "# 1. Outer step.",
+                "#   a. Inner lettered step that is long enough to require wrapping"
+                " at this width.",
+                "#   b. Second inner step.",
+                "# 2. Next outer step.",
+            ]
+        )
+        result = rewrap_comment_block(block, max_line_length=50)
+        for marker in ["# 1. ", "#   a. ", "#   b. ", "# 2. "]:
+            assert sum(line.startswith(marker) for line in result) == 1
+        # The wrapped "a." item's continuation aligns under its text column.
+        a_idx = next(i for i, line in enumerate(result) if line.startswith("#   a. "))
+        assert result[a_idx + 1].startswith("#      ")
+        for line in result:
+            assert len(line) <= 50
+
     def test_short_list_items_unchanged(self):
         """Short list items that fit should remain unchanged."""
         block = make_block(
@@ -777,10 +893,10 @@ class TestListWrap:
 
     def test_deeply_nested_too_narrow_preserves(self):
         """A deeply nested list marker that makes available width < 10 preserves."""
-        # Content "          - text" has marker "          - " (12 chars).
-        # initial = "# " + "          - " = 14 chars.
-        # At width 22: first_width = 22-14 = 8 < 10, triggers preserve.
-        # text_width = 22-2 = 20 >= 20, so the early return does not fire.
+        # Content "          - text" has marker "          - " (12 chars). initial = "#
+        # " + "          - " = 14 chars. At width 22: first_width = 22-14 = 8 < 10,
+        # triggers preserve. text_width = 22-2 = 20 >= 20, so the early return does not
+        # fire.
         block = make_block(
             ["#           - deeply nested item"],
         )

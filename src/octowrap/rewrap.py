@@ -14,6 +14,7 @@ import argparse
 import difflib
 import fnmatch
 import io
+import keyword
 import os
 import re
 import shutil
@@ -81,13 +82,99 @@ def is_excluded(path: Path, exclude_patterns: list[str]) -> bool:
     return False
 
 
+# Legal prefixes for Python string literals (case-insensitive), used to tell an f-string
+# like f'...' apart from a possessive apostrophe like user's.
+_STRING_PREFIXES: frozenset[str] = frozenset(
+    {"r", "b", "f", "u", "rb", "br", "fr", "rf"}
+)
+
+# Minimum length of a keyword-free bare-word run that marks a line as prose.
+_PROSE_WORD_RUN: int = 4
+
+_KEYWORDS: frozenset[str] = frozenset(keyword.kwlist)
+
+
+def _code_visible_text(text: str) -> str:
+    """Return the code-visible portion of *text*.
+
+    String-literal contents (single-, double-, and triple-quoted, with backslash
+    escapes) are replaced by a single space, and everything from a ``#`` outside quotes
+    onward (a nested comment in commented-out code) is dropped.  A single quote
+    immediately preceded by a letter is treated as a possessive apostrophe rather than
+    a string delimiter, unless the word before it is a string prefix (``f``, ``r``,
+    ``b``, ``u``, or a two-letter combination), so ``user's`` and ``users'`` stay
+    visible while ``f'...'`` is stripped.  In valid Python, a quote directly following
+    an identifier letter is only ever a string opener when that word is a prefix, so
+    the prefix check alone is decisive.
+
+    Note:
+        Like :func:`find_inline_comment`, this scanner has no cross-line state, so a
+        quote that actually closes a string opened on an earlier line is misread as an
+        opener and strips to the end of the line.  That failure removes words, which
+        only makes prose detection less likely to fire; it errs toward classifying the
+        line as code.
+    """
+    out: list[str] = []
+    i = 0
+    length = len(text)
+    while i < length:
+        ch = text[i]
+        if ch in ("'", '"'):
+            if ch == "'" and 0 < i and text[i - 1].isalpha():
+                match = re.search(r"\w*$", text[:i])
+                assert match is not None  # \w*$ always matches
+                if match.group(0).lower() not in _STRING_PREFIXES:
+                    out.append(ch)
+                    i += 1
+                    continue
+            quote = ch * 3 if text.startswith(ch * 3, i) else ch
+            i += len(quote)
+            while i < length:
+                if text[i] == "\\":
+                    i += 2
+                    continue
+                if text.startswith(quote, i):
+                    i += len(quote)
+                    break
+                i += 1
+            out.append(" ")
+            continue
+        if ch == "#":
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _has_bare_word_run(text: str) -> bool:
+    """Return True if *text* contains a keyword-free run of bare words.
+
+    A run is a sequence of words separated only by whitespace (no operators or
+    punctuation between them).  A run of :data:`_PROSE_WORD_RUN` or more consecutive
+    words containing no Python keywords is never valid syntax, so it marks the text as
+    prose.  Keywords reset the count rather than end the run, because chains like ``a if
+    b else c`` or ``x or y`` are real code.
+    """
+    for run in re.findall(r"[A-Za-z_]\w*(?:[ \t]+[A-Za-z_]\w*)+", text):
+        streak = 0
+        for word in run.split():
+            if word in _KEYWORDS:
+                streak = 0
+            else:
+                streak += 1
+                if streak >= _PROSE_WORD_RUN:
+                    return True
+    return False
+
+
 def _looks_like_prose(text: str) -> bool:
     """Return True if *text* looks like natural-language prose.
 
     Called as a second pass after a code-pattern matched, to rescue false positives such
     as "if the server is down:" or "return the result".
     """
-    lower = text.strip().lower()
+    stripped = text.strip()
+    lower = stripped.lower()
     determiners = r"(?:the|this|that|these|those)"
     keywords = r"(?:if|while|with|return|raise|import|assert|yield)"
     # keyword + determiner + word  (e.g. "if the server ...")
@@ -95,6 +182,21 @@ def _looks_like_prose(text: str) -> bool:
         return True
     # "return to ..."  (e.g. "return to the caller")
     if re.match(r"return\s+to\s+", lower):
+        return True
+    # A sentence-final period (e.g. "delta_time = lcm_period / num_steps."). A bare
+    # trailing "." is invalid Python syntax unless it completes a float literal ("x =
+    # 1.") or an ellipsis ("x = ..."), so anything else ending in "." reads as prose.
+    if (
+        len(stripped) >= 2
+        and stripped.endswith(".")
+        and not stripped[-2].isdigit()
+        and stripped[-2] != "."
+    ):
+        return True
+    # A long keyword-free run of bare words in the code-visible text (e.g. "Slice the
+    # panel arrays accordingly so") is never valid Python outside a string literal, so
+    # it marks the line as prose regardless of where a prior wrap broke the sentence.
+    if _has_bare_word_run(_code_visible_text(stripped)):
         return True
     return False
 
@@ -122,7 +224,8 @@ def is_likely_code(text: str) -> bool:
         r"^\s*print\s*\(",  # print call
         r"^\s*self\.",  # self reference
         r"^\s*\w+\.\w+\(",  # method call
-        r"^\s*\w+\s*\([^)]*\)\s*$",  # function call
+        r"^\s*\w+\([^)]*\)\s*$",  # function call (no space before the paren: prose
+        # like "Subtract (this - that)" wraps a parenthetical, not an argument list)
     ]
     if not any(re.match(p, text) for p in code_patterns):
         return False
@@ -168,7 +271,10 @@ def is_list_item(text: str) -> bool:
     """Check if a comment line is a list item or bullet point."""
     list_patterns = [
         r"^\s*[-*\u2022]\s+",  # bullet points
-        r"^\s*\d+[.)]\s+",  # numbered lists
+        # Numbered lists, including dotted multi-level markers like "5.1." or "5.5.a.".
+        # Chains must start with a digit: a letter-led chain would also match
+        # abbreviations like "e.g. " at the start of a prose line.
+        r"^\s*\d+(?:\.(?:\d+|[a-zA-Z]+))*[.)]\s+",
         r"^\s*[a-zA-Z][.)]\s+",  # lettered lists
     ]
     return any(re.match(p, text) for p in list_patterns)
@@ -341,7 +447,8 @@ def extract_list_marker(text: str) -> tuple[str, str]:
     """
     list_patterns = [
         r"^(\s*[-*\u2022]\s+)(.*)",  # bullet points
-        r"^(\s*\d+[.)]\s+)(.*)",  # numbered lists
+        # Numbered lists, including dotted multi-level markers (see is_list_item).
+        r"^(\s*\d+(?:\.(?:\d+|[a-zA-Z]+))*[.)]\s+)(.*)",
         r"^(\s*[a-zA-Z][.)]\s+)(.*)",  # lettered lists
     ]
     for p in list_patterns:

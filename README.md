@@ -215,7 +215,7 @@ The most common use case is adding octowrap to pre-commit so it only enforces wr
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.6.1
+  rev: v0.6.2
   hooks:
     - id: octowrap
       args: [--diff-only]
@@ -225,7 +225,7 @@ Or in check-only mode (fail without modifying):
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.6.1
+  rev: v0.6.2
   hooks:
     - id: octowrap
       args: [--diff-only, --check]
@@ -259,7 +259,7 @@ Add octowrap to your `.pre-commit-config.yaml`:
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.6.1
+  rev: v0.6.2
   hooks:
     - id: octowrap
       # args: [-l, "79"]       # custom line length
