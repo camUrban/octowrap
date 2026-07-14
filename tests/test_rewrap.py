@@ -103,6 +103,22 @@ class TestProseMistakenForCode:
         assert len(units) == 1
         assert all(len(line) <= 88 for line in units[0]["rewrapped"])
 
+    def test_mid_sentence_assignment_stays_in_paragraph(self):
+        """A code-shaped fragment mid-sentence must not split the paragraph, even when
+        the prior wrap left the sentence boundary mid-line (so the sentence-final-
+        period rescue cannot fire); the bare-word-run signal catches it instead."""
+        block = make_block(
+            [
+                "# Comparison axis: index i in [0, num_steps - 2] maps to",
+                "# step = i + 1, prev_step = i. Slice the panel arrays accordingly so",
+                "# bound and wake area calculations can run as one vectorized batch",
+                "# rather than a Python step loop.",
+            ]
+        )
+        units = _block_prompt_units(block, max_line_length=88)
+        assert len(units) == 1
+        assert all(len(line) <= 88 for line in units[0]["rewrapped"])
+
 
 class TestSectionHeader:
     """Section headers like ``# === Title ===`` are preserved verbatim."""

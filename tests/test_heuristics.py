@@ -2,6 +2,8 @@ import pytest
 
 # noinspection PyProtectedMember
 from octowrap.rewrap import (
+    _code_visible_text,
+    _has_bare_word_run,
     _join_comment_lines,
     _looks_like_prose,
     extract_list_marker,
@@ -44,6 +46,12 @@ class TestIsLikelyCode:
             "foo(bar)",
             "x = 1.",
             "x = ...",
+            'msg = "the quick brown fox jumps"',
+            "x = f'the quick brown fox jumps'",
+            'x = """the quick brown fox jumps"""',
+            'msg = "the quick brown fox',
+            "x = compute()  # use the default value here",
+            "x = value_a if flag else value_b",
         ],
         ids=[
             "assignment",
@@ -70,6 +78,12 @@ class TestIsLikelyCode:
             "function_call",
             "float_literal_assignment",
             "ellipsis_assignment",
+            "string_literal_words",
+            "fstring_prefix_words",
+            "triple_quoted_words",
+            "unterminated_string_words",
+            "nested_comment_words",
+            "conditional_expression",
         ],
     )
     def test_detects_code(self, text):
@@ -96,6 +110,8 @@ class TestIsLikelyCode:
             "def improve the code quality",
             "Subtract (this_value - that_value)",
             "delta_time = lcm_period / num_steps.",
+            "step = i + 1, prev_step = i. Slice the panel arrays accordingly so",
+            "x = the user's preferred value here",
         ],
         ids=[
             "plain_english",
@@ -116,6 +132,8 @@ class TestIsLikelyCode:
             "def_no_paren",
             "spaced_parenthetical",
             "assignment_trailing_period",
+            "mid_sentence_assignment",
+            "possessive_apostrophe",
         ],
     )
     def test_rejects_prose(self, text):
@@ -143,6 +161,8 @@ class TestLooksLikeProse:
             "assert that it works",
             "delta_time = lcm_period / num_steps.",
             "geometry axes). This is the vector pointing opposite the motion.",
+            "step = i + 1, prev_step = i. Slice the panel arrays accordingly so",
+            "x = the user's preferred value here",
         ],
         ids=[
             "if_the",
@@ -160,6 +180,8 @@ class TestLooksLikeProse:
             "assert_that_it",
             "trailing_period",
             "sentence_fragment_trailing_period",
+            "mid_sentence_word_run",
+            "possessive_apostrophe_word_run",
         ],
     )
     def test_detects_prose(self, text):
@@ -180,6 +202,8 @@ class TestLooksLikeProse:
             "if a is None:",
             "x = 1.",
             "x = ...",
+            'msg = "the quick brown fox jumps"',
+            "x = value_a if flag else value_b",
         ],
         ids=[
             "if_code",
@@ -194,10 +218,68 @@ class TestLooksLikeProse:
             "if_single_var",
             "float_literal",
             "ellipsis",
+            "string_literal_words",
+            "conditional_expression",
         ],
     )
     def test_rejects_code(self, text):
         assert not _looks_like_prose(text)
+
+
+class TestCodeVisibleText:
+    """Tests for the string-aware scanner behind the bare-word-run prose check."""
+
+    def test_double_quoted_contents_stripped(self):
+        assert _code_visible_text('msg = "the quick brown fox"') == "msg =  "
+
+    def test_single_quoted_contents_stripped(self):
+        assert _code_visible_text("msg = 'the quick brown fox'") == "msg =  "
+
+    def test_triple_quoted_contents_stripped(self):
+        assert _code_visible_text('msg = """the quick brown fox"""') == "msg =  "
+
+    def test_escaped_quote_does_not_end_string(self):
+        assert _code_visible_text('msg = "say \\"the fox\\"" + x') == "msg =   + x"
+
+    def test_unterminated_string_stripped_to_end(self):
+        assert _code_visible_text('msg = "the quick brown fox') == "msg =  "
+
+    def test_nested_comment_truncated(self):
+        assert (
+            _code_visible_text("x = compute()  # use the default") == "x = compute()  "
+        )
+
+    def test_hash_inside_string_kept_in_string(self):
+        assert _code_visible_text('tag = "#anchor" + x') == "tag =   + x"
+
+    def test_possessive_apostrophe_kept(self):
+        text = "x = the user's preferred value"
+        assert _code_visible_text(text) == text
+
+    def test_string_prefix_not_apostrophe(self):
+        assert _code_visible_text("x = f'the quick brown fox'") == "x = f "
+
+    def test_leading_quote_is_string(self):
+        assert _code_visible_text("'the quick brown fox' == x") == "  == x"
+
+
+class TestHasBareWordRun:
+    """Tests for the keyword-free bare-word-run prose signal."""
+
+    def test_long_run_detected(self):
+        assert _has_bare_word_run("Slice the panel arrays accordingly so")
+
+    def test_keywords_reset_the_streak(self):
+        assert not _has_bare_word_run("value_a if flag else value_b or value_c")
+
+    def test_run_after_keyword_detected(self):
+        assert _has_bare_word_run("x and the same thing again here")
+
+    def test_short_runs_not_detected(self):
+        assert not _has_bare_word_run("open('f') as fh")
+
+    def test_no_runs_not_detected(self):
+        assert not _has_bare_word_run("x = a + b * c")
 
 
 class TestIsDivider:
