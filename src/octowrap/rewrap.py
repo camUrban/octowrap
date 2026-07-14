@@ -99,11 +99,13 @@ def _code_visible_text(text: str) -> str:
 
     String-literal contents (single-, double-, and triple-quoted, with backslash
     escapes) are replaced by a single space, and everything from a ``#`` outside quotes
-    onward (a nested comment in commented-out code) is dropped.  A single quote with a
-    letter immediately on both sides is treated as a possessive apostrophe rather than
+    onward (a nested comment in commented-out code) is dropped.  A single quote
+    immediately preceded by a letter is treated as a possessive apostrophe rather than
     a string delimiter, unless the word before it is a string prefix (``f``, ``r``,
-    ``b``, ``u``, or a two-letter combination), so ``user's`` stays visible while
-    ``f'...'`` is stripped.
+    ``b``, ``u``, or a two-letter combination), so ``user's`` and ``users'`` stay
+    visible while ``f'...'`` is stripped.  In valid Python, a quote directly following
+    an identifier letter is only ever a string opener when that word is a prefix, so
+    the prefix check alone is decisive.
 
     Note:
         Like :func:`find_inline_comment`, this scanner has no cross-line state, so a
@@ -118,12 +120,7 @@ def _code_visible_text(text: str) -> str:
     while i < length:
         ch = text[i]
         if ch in ("'", '"'):
-            if (
-                ch == "'"
-                and 0 < i < length - 1
-                and text[i - 1].isalpha()
-                and text[i + 1].isalpha()
-            ):
+            if ch == "'" and 0 < i and text[i - 1].isalpha():
                 match = re.search(r"\w*$", text[:i])
                 assert match is not None  # \w*$ always matches
                 if match.group(0).lower() not in _STRING_PREFIXES:

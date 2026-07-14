@@ -112,6 +112,7 @@ class TestIsLikelyCode:
             "delta_time = lcm_period / num_steps.",
             "step = i + 1, prev_step = i. Slice the panel arrays accordingly so",
             "x = the user's preferred value here",
+            "x = the users' currently preferred display settings",
         ],
         ids=[
             "plain_english",
@@ -134,6 +135,7 @@ class TestIsLikelyCode:
             "assignment_trailing_period",
             "mid_sentence_assignment",
             "possessive_apostrophe",
+            "plural_possessive_apostrophe",
         ],
     )
     def test_rejects_prose(self, text):
@@ -163,6 +165,7 @@ class TestLooksLikeProse:
             "geometry axes). This is the vector pointing opposite the motion.",
             "step = i + 1, prev_step = i. Slice the panel arrays accordingly so",
             "x = the user's preferred value here",
+            "x = the users' currently preferred display settings",
         ],
         ids=[
             "if_the",
@@ -182,6 +185,7 @@ class TestLooksLikeProse:
             "sentence_fragment_trailing_period",
             "mid_sentence_word_run",
             "possessive_apostrophe_word_run",
+            "plural_possessive_word_run",
         ],
     )
     def test_detects_prose(self, text):
@@ -254,6 +258,10 @@ class TestCodeVisibleText:
 
     def test_possessive_apostrophe_kept(self):
         text = "x = the user's preferred value"
+        assert _code_visible_text(text) == text
+
+    def test_plural_possessive_apostrophe_kept(self):
+        text = "x = the users' currently preferred display settings"
         assert _code_visible_text(text) == text
 
     def test_string_prefix_not_apostrophe(self):
