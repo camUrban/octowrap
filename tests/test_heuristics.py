@@ -330,6 +330,10 @@ class TestIsListItem:
             "1) numbered paren",
             "a. lettered",
             "a) lettered paren",
+            "  5.1. dotted nested",
+            "    5.5.1. dotted deep",
+            "  5.a. dotted letter segment",
+            "  5.iv. dotted roman segment",
         ],
         ids=[
             "dash",
@@ -339,6 +343,10 @@ class TestIsListItem:
             "num_paren",
             "letter_dot",
             "letter_paren",
+            "dotted_nested",
+            "dotted_deep",
+            "dotted_letter",
+            "dotted_roman",
         ],
     )
     def test_detects_list_items(self, text):
@@ -355,6 +363,9 @@ class TestIsListItem:
             "NOTE: important",
             "XXX: needs work",
             "HACK: temporary",
+            "1.5 seconds is the timeout",
+            "e.g. this is an example",
+            "i.e. that other thing",
         ],
     )
     def test_rejects_non_list(self, text):
@@ -789,6 +800,21 @@ class TestExtractListMarker:
         marker, content = extract_list_marker("12. twelfth item")
         assert marker == "12. "
         assert content == "twelfth item"
+
+    def test_dotted_nested_number(self):
+        marker, content = extract_list_marker("  5.1. nested item")
+        assert marker == "  5.1. "
+        assert content == "nested item"
+
+    def test_dotted_deep_number(self):
+        marker, content = extract_list_marker("    5.5.1. deep item")
+        assert marker == "    5.5.1. "
+        assert content == "deep item"
+
+    def test_dotted_letter_segment(self):
+        marker, content = extract_list_marker("  5.a. lettered segment")
+        assert marker == "  5.a. "
+        assert content == "lettered segment"
 
     def test_empty_content(self):
         marker, content = extract_list_marker("- ")

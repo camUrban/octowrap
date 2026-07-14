@@ -274,7 +274,10 @@ def is_list_item(text: str) -> bool:
     """Check if a comment line is a list item or bullet point."""
     list_patterns = [
         r"^\s*[-*\u2022]\s+",  # bullet points
-        r"^\s*\d+[.)]\s+",  # numbered lists
+        # Numbered lists, including dotted multi-level markers like "5.1." or "5.5.a.".
+        # Chains must start with a digit: a letter-led chain would also match
+        # abbreviations like "e.g. " at the start of a prose line.
+        r"^\s*\d+(?:\.(?:\d+|[a-zA-Z]+))*[.)]\s+",
         r"^\s*[a-zA-Z][.)]\s+",  # lettered lists
     ]
     return any(re.match(p, text) for p in list_patterns)
@@ -447,7 +450,8 @@ def extract_list_marker(text: str) -> tuple[str, str]:
     """
     list_patterns = [
         r"^(\s*[-*\u2022]\s+)(.*)",  # bullet points
-        r"^(\s*\d+[.)]\s+)(.*)",  # numbered lists
+        # Numbered lists, including dotted multi-level markers (see is_list_item).
+        r"^(\s*\d+(?:\.(?:\d+|[a-zA-Z]+))*[.)]\s+)(.*)",
         r"^(\s*[a-zA-Z][.)]\s+)(.*)",  # lettered lists
     ]
     for p in list_patterns:
