@@ -26,7 +26,7 @@ docformatter --check --diff --config ./pyproject.toml .
 ty check .
 
 # Run all pre-commit hooks (ruff-check, ruff-format, codespell, docformatter, octowrap,
-# and ty)
+# zizmor, and ty)
 pre-commit run --all-files
 ```
 
@@ -71,11 +71,12 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 ## Tooling
 
 - **Python 3.11+**, no runtime dependencies (stdlib only, uses `tomllib` for config)
-- **uv** for package management; `.python-version` pins dev to 3.13 (docformatter's `untokenize` dep doesn't build on 3.14)
+- **uv** for package management, with `.python-version` pinning dev to 3.14
 - **ruff** for linting, formatting, and import sorting
 - **codespell** for spell checking
 - **docformatter** for docstring formatting (config in `[tool.docformatter]` in pyproject.toml)
 - **ty** for type checking
+- **zizmor** for auditing the GitHub Actions workflows
 - **pytest** for testing (with pytest-cov for coverage)
-- **pre-commit** hooks run ruff-check, ruff-format, codespell, docformatter, octowrap, and ty
+- **pre-commit** hooks run ruff-check, ruff-format, codespell, docformatter, octowrap, zizmor, and ty
 - `.pre-commit-hooks.yaml` defines the `octowrap` hook for external consumers
