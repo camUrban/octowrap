@@ -206,7 +206,7 @@ class TestProcessContentInline:
     def test_code_without_inline_untouched(self):
         """Long code lines without inline comments are not modified."""
         content = "x = some_really_long_function_call(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10)\n"
-        changed, result, _ = process_content(content, max_line_length=88)
+        changed, _result, _ = process_content(content, max_line_length=88)
         assert not changed
 
     def test_extracted_comment_wraps_to_line_length(self):

@@ -89,12 +89,18 @@ class TestProseMistakenForCode:
         indent = " " * 8
         block = make_block(
             [
-                f"{indent}# Mock the cached batch evaluator to return mismatches that"
-                " increase",
-                f"{indent}# with num_steps, so the best is at min_num_steps (lower"
-                " bound = largest",
-                f"{indent}# delta_time). This mirrors the original 1.0 / delta_time"
-                " shape via",
+                (
+                    f"{indent}# Mock the cached batch evaluator to return mismatches"
+                    " that increase"
+                ),
+                (
+                    f"{indent}# with num_steps, so the best is at min_num_steps (lower"
+                    " bound = largest"
+                ),
+                (
+                    f"{indent}# delta_time). This mirrors the original 1.0 / delta_time"
+                    " shape via"
+                ),
                 f"{indent}# delta_time = lcm_period / num_steps.",
             ],
             indent=indent,
@@ -735,11 +741,15 @@ class TestListWrap:
             [
                 f"{indent}# 5. Iterate over the WingMovements.",
                 f"{indent}#   5.1. Reference the WingMovement's base Wing.",
-                f"{indent}#   5.2. Create an empty list for the WingCrossSectionMovements'"
-                " base WingCrossSection",
+                (
+                    f"{indent}#   5.2. Create an empty list for the"
+                    " WingCrossSectionMovements' base WingCrossSection"
+                ),
                 f"{indent}#        copies.",
-                f"{indent}#     5.5.1. Reference the WingCrossSectionMovement's base"
-                " WingCrossSection.",
+                (
+                    f"{indent}#     5.5.1. Reference the WingCrossSectionMovement's"
+                    " base WingCrossSection."
+                ),
                 f"{indent}#   5.3. Create a copy of the base Wing.",
             ],
             indent=indent,
@@ -760,8 +770,10 @@ class TestListWrap:
         block = make_block(
             [
                 "# 1. Outer step.",
-                "#   a. Inner lettered step that is long enough to require wrapping"
-                " at this width.",
+                (
+                    "#   a. Inner lettered step that is long enough to require wrapping"
+                    " at this width."
+                ),
                 "#   b. Second inner step.",
                 "# 2. Next outer step.",
             ]

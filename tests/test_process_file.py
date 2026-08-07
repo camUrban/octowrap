@@ -72,7 +72,7 @@ class TestProcessFile:
         """A file with no rewrappable changes should return changed=False."""
         f = tmp_path / "clean.py"
         f.write_bytes(b"x = 1\ny = 2\n")
-        changed, content = process_file(f, max_line_length=88)
+        changed, _content = process_file(f, max_line_length=88)
         assert not changed
 
     def test_dry_run_does_not_write(self, tmp_path):
@@ -179,7 +179,7 @@ class TestProcessFileInteractive:
         f = tmp_path / "t.py"
         f.write_bytes(WRAPPABLE_CONTENT)
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "s")
-        changed, content = process_file(f, max_line_length=88, interactive=True)
+        changed, _content = process_file(f, max_line_length=88, interactive=True)
         assert not changed
 
     def test_quit_keeps_remaining_blocks(self, tmp_path, monkeypatch):
@@ -193,7 +193,7 @@ class TestProcessFileInteractive:
             b"# at a short width.\n"
         )
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "q")
-        changed, content = process_file(f, max_line_length=88, interactive=True)
+        changed, _content = process_file(f, max_line_length=88, interactive=True)
         # Both blocks should be unchanged since user quit on the first
         assert not changed
 
@@ -402,9 +402,7 @@ class TestProcessFileInteractive:
         monkeypatch.setattr("octowrap.rewrap.prompt_user", lambda *_, **__: "f")
         _, content = process_file(f, max_line_length=width, interactive=True)
         flag_lines = [
-            ln
-            for ln in content.splitlines()
-            if ln.startswith("# FIXME: ") or ln.startswith("#  ")
+            ln for ln in content.splitlines() if ln.startswith(("# FIXME: ", "#  "))
         ]
         assert flag_lines, f"expected a FIXME block at width={width}"
         for line in flag_lines:
@@ -863,12 +861,12 @@ class TestPragma:
             "# at a short width previously.\n"
         )
         # fmt: on
-        changed, result, _ = process_content(content, max_line_length=88)
+        changed, _result, _ = process_content(content, max_line_length=88)
         assert not changed
 
     def test_pragma_block_itself_preserved(self):
         content = "# octowrap: off\nx = 1\n"
-        changed, result, _ = process_content(content, max_line_length=88)
+        _changed, result, _ = process_content(content, max_line_length=88)
         assert "# octowrap: off" in result
 
     def test_pragma_off_without_on(self):
@@ -902,7 +900,7 @@ class TestPragma:
             return "a"
 
         monkeypatch.setattr("octowrap.rewrap.prompt_user", should_not_be_called)
-        changed, result, _ = process_content(
+        changed, _result, _ = process_content(
             content, max_line_length=88, interactive=True
         )
         assert not changed
@@ -974,7 +972,7 @@ class TestChangedLinesFiltering:
             "x = 1\n"
         )
         # fmt: on
-        changed, result, _ = process_content(
+        changed, _result, _ = process_content(
             content, max_line_length=88, changed_lines={1}
         )
         assert changed
@@ -1094,7 +1092,7 @@ class TestTodoIntegration:
         content = (
             "# TODO: First line of the todo\n#  continuation of the todo item\nx = 1\n"
         )
-        changed, result, _ = process_content(content, max_line_length=88)
+        _changed, result, _ = process_content(content, max_line_length=88)
         lines = result.splitlines()
         assert lines[0].startswith("# TODO: ")
         full = " ".join(line.lstrip("# ") for line in lines if line.startswith("#"))

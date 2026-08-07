@@ -196,14 +196,14 @@ class TestGetChangedLines:
         """Passes the custom base ref to git diff."""
         calls = self._mock_subprocess(monkeypatch, "/repo", "")
         get_changed_lines(base="main")
-        diff_cmd = [c for c in calls if "diff" in c][0]
+        diff_cmd = next(c for c in calls if "diff" in c)
         assert "main" in diff_cmd
 
     def test_default_base_is_head(self, monkeypatch):
         """Default base ref is HEAD."""
         calls = self._mock_subprocess(monkeypatch, "/repo", "")
         get_changed_lines()
-        diff_cmd = [c for c in calls if "diff" in c][0]
+        diff_cmd = next(c for c in calls if "diff" in c)
         assert "HEAD" in diff_cmd
 
     def test_not_a_git_repo(self, monkeypatch):
