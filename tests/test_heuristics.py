@@ -435,7 +435,6 @@ class TestIsToolDirective:
     def test_detects_directives(self, text):
         assert is_tool_directive(text)
 
-    # fmt: off
     @pytest.mark.parametrize(
         "text",
         [
@@ -446,7 +445,6 @@ class TestIsToolDirective:
         ],
         ids=["prose", "contains_type", "contains_fmt", "empty"],
     )
-    # fmt: on
     def test_rejects_non_directives(self, text):
         assert not is_tool_directive(text)
 
@@ -659,7 +657,7 @@ class TestExtractTodoMarker:
 
     def test_pattern_with_trailing_colon_no_double_colon(self):
         """Pattern 'TEST:' should not produce a double colon in the marker."""
-        marker, content = extract_todo_marker("TEST: stuff", patterns=["TEST:"])
+        marker, _content = extract_todo_marker("TEST: stuff", patterns=["TEST:"])
         assert "::" not in marker
 
 

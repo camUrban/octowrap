@@ -196,9 +196,7 @@ def _looks_like_prose(text: str) -> bool:
     # A long keyword-free run of bare words in the code-visible text (e.g. "Slice the
     # panel arrays accordingly so") is never valid Python outside a string literal, so
     # it marks the line as prose regardless of where a prior wrap broke the sentence.
-    if _has_bare_word_run(_code_visible_text(stripped)):
-        return True
-    return False
+    return _has_bare_word_run(_code_visible_text(stripped))
 
 
 def is_likely_code(text: str) -> bool:
@@ -229,9 +227,7 @@ def is_likely_code(text: str) -> bool:
     ]
     if not any(re.match(p, text) for p in code_patterns):
         return False
-    if _looks_like_prose(text):
-        return False
-    return True
+    return not _looks_like_prose(text)
 
 
 def is_divider(text: str) -> bool:
@@ -480,11 +476,15 @@ def _join_comment_lines(lines: list[str]) -> str:
         return ""
     result = lines[0]
     for line in lines[1:]:
-        if re.search(r"[a-zA-Z]-$", result) and line and line[0].isalpha():
-            result += line
-        elif result and result[-1] in ("(", "["):
-            result += line
-        elif line and line[0] in (")", "]"):
+        if (
+            re.search(r"[a-zA-Z]-$", result)
+            and line
+            and line[0].isalpha()
+            or result
+            and result[-1] in ("(", "[")
+            or line
+            and line[0] in (")", "]")
+        ):
             result += line
         else:
             result += " " + line
@@ -501,9 +501,7 @@ def should_preserve_line(text: str) -> bool:
         return True
     if is_divider(text):
         return True
-    if is_section_header(text):
-        return True
-    return False
+    return is_section_header(text)
 
 
 def parse_pragma(line: str) -> str | None:
@@ -941,9 +939,11 @@ def count_changed_blocks(
         if block["type"] == "code":
             if not disabled and inline:
                 for line_idx, line in enumerate(block["lines"]):
-                    if changed_lines is not None:
-                        if (block["start_idx"] + line_idx) not in changed_lines:
-                            continue
+                    if (
+                        changed_lines is not None
+                        and (block["start_idx"] + line_idx) not in changed_lines
+                    ):
+                        continue
                     if _should_extract_inline(
                         line,
                         max_line_length,
@@ -1304,11 +1304,13 @@ def process_content(
                         continue
 
                     # Skip lines not in the changed set.
-                    if changed_lines is not None:
-                        if (block["start_idx"] + line_idx) not in changed_lines:
-                            new_lines.append(line)
-                            line_idx += 1
-                            continue
+                    if (
+                        changed_lines is not None
+                        and (block["start_idx"] + line_idx) not in changed_lines
+                    ):
+                        new_lines.append(line)
+                        line_idx += 1
+                        continue
 
                     # Extract the inline comment and build replacement lines.
                     extracted = extract_inline_comment(line)
@@ -1918,7 +1920,9 @@ def _run_session(
                     decisions=decisions_for_file,
                     rewind_to_cursor=rewind_cursor,
                 )
-            except Exception as e:
+            # Blanket catch by design: one failing file must not abort the batch. The
+            # caller reports the error (main) or re-raises it (process_file).
+            except Exception as e:  # noqa: BLE001
                 yield {
                     "filepath": fp,
                     "changed": False,
@@ -2187,11 +2191,11 @@ def main():
     # Diff-only: default False, config can override, --diff-only or --diff-base wins
     diff_only = False
     diff_base = "HEAD"
-    if args.diff_only is not None:
-        diff_only = True
-    elif args.diff_base is not None:
-        diff_only = True
-    elif config.get("diff-only", False):
+    if (
+        args.diff_only is not None
+        or args.diff_base is not None
+        or config.get("diff-only", False)
+    ):
         diff_only = True
     if args.diff_base is not None:
         diff_base = args.diff_base

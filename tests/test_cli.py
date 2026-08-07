@@ -178,6 +178,7 @@ class TestEntryPoints:
             ["octowrap", str(f)],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0
         assert "1 file(s) reformatted." in result.stdout
