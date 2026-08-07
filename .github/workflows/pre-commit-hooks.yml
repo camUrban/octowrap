@@ -8,10 +8,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   pre-commit-hooks:
     name: ${{ matrix.name }}
@@ -31,6 +27,7 @@ jobs:
           - { hook: destroyed-symlinks,                   name: destroyed-symlinks }
           - { hook: check-yaml,                           name: yaml-files }
           - { hook: check-toml,                           name: toml-files }
+          - { hook: check-xml,                            name: xml-files }
           - { hook: check-json,                           name: json-files }
           - { hook: detect-private-key,                   name: private-keys }
           - { hook: forbid-submodules,                    name: submodules }
@@ -42,10 +39,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set up Python 3.13
+      - name: Set up Python 3.14
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Install pre-commit
         run: |
           python -m pip install --upgrade pip

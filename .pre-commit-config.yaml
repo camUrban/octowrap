@@ -53,6 +53,8 @@ repos:
         name: checker  yaml-files
       - id: check-toml
         name: checker  toml-files
+      - id: check-xml
+        name: checker  xml-files
       - id: check-json
         name: checker  json-files
       - id: detect-private-key
@@ -74,6 +76,11 @@ repos:
     hooks:
       - id: codespell
         name: checker  codespell
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: 067260dc5fe6ea86b7551bfd6f8b3ba4e6c93129  # frozen: v1.28.0
+    hooks:
+      - id: zizmor
+        name: checker  zizmor
   - repo: local
     hooks:
       - id: ascii-only
@@ -81,7 +88,7 @@ repos:
         entry: python scripts/check_ascii_only.py
         language: system
         types: [text]
-        exclude: '\.svg$'
+        exclude: '\.(svg|ui)$'
       - id: ty
         # No official hook yet (https://github.com/astral-sh/ty/issues/269).
         name: checker  ty

@@ -38,10 +38,10 @@ Rewrap Python `#` comments to a line length you choose without touching commente
 ```bash
 git clone https://github.com/camUrban/octowrap.git
 cd octowrap
-uv sync            # uses .python-version (3.13); installs runtime + dev group
+uv sync            # uses .python-version (3.14) and installs runtime + dev group
 ```
 
-> **Note:** The dev environment is pinned to Python 3.13 via `.python-version` because docformatter's `untokenize` dependency doesn't build on 3.14. The runtime itself supports 3.11+.
+> **Note:** The dev environment is pinned to Python 3.14 via `.python-version`. The runtime itself supports 3.11+.
 
 ## Usage
 

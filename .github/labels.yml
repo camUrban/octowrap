@@ -1,0 +1,59 @@
+# Single source of truth for this repository's issue and pull request labels.
+#
+# The label-sync workflow (.github/workflows/label-sync.yml) reconciles the
+# repository to match this file on every push to main that touches it. Because
+# that workflow runs with delete-other-labels enabled, any label not listed
+# here is deleted. Add or edit entries here rather than in the GitHub UI.
+#
+# To rename a label without losing the issues already tagged with it, keep the
+# new name under "name" and list the previous name under "aliases".
+
+- name: bug
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: duplicate
+  color: "cfd3d7"
+  description: "This already exists"
+
+- name: feature
+  color: "a2eeef"
+  description: "New feature or request"
+  aliases: ["enhancement"]
+
+- name: good_first_issue
+  color: "7057ff"
+  description: "Good for newcomers"
+
+- name: maintenance
+  color: "0075ca"
+  description: "Improvements or additions to documentation, testing, robustness, or tooling"
+
+- name: question
+  color: "d876e3"
+  description: "Further information is needed"
+
+- name: invalid
+  color: "e4e669"
+  description: "This doesn't seem right"
+
+- name: wont_fix
+  color: "ffffff"
+  description: "This will not be worked on"
+  aliases: ["wontfix"]
+
+- name: dependencies
+  color: "0366d6"
+  description: "Updates to dependencies"
+
+- name: performance
+  color: "1e350e"
+  description: "An opportunity to improve performance"
+
+- name: pre_commit
+  color: "ba9f5b"
+  description: "Updates to pre-commit code"
+
+- name: github_actions
+  color: "c76012"
+  description: "Updates to GitHub Actions code"
