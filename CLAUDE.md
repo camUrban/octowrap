@@ -25,8 +25,8 @@ codespell
 docformatter --check --diff --config ./pyproject.toml .
 ty check .
 
-# Run all pre-commit hooks (ruff-check, ruff-format, codespell, docformatter, octowrap,
-# zizmor, and ty)
+# Run all pre-commit hooks (ruff-check, ruff-format, codespell, docformatter,
+# octowrap-check, zizmor, and ty)
 pre-commit run --all-files
 ```
 
@@ -78,5 +78,5 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 - **ty** for type checking
 - **zizmor** for auditing the GitHub Actions workflows
 - **pytest** for testing (with pytest-cov for coverage)
-- **pre-commit** hooks run ruff-check, ruff-format, codespell, docformatter, octowrap, zizmor, and ty
+- **pre-commit** hooks run ruff-check, ruff-format, codespell, docformatter, octowrap-check, zizmor, and ty
 - `.pre-commit-hooks.yaml` defines the `octowrap` hook for external consumers

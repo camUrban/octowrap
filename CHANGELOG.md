@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-09-03
 
 ### Added
 - `--check` now prints a fix hint after the summary line when files would be reformatted. The hint lists three commands built from `sys.executable` and naming only the files that failed: an interactive `Run` command (`<python> -m octowrap -i <files>`), and a `No TTY` pair (`--diff` to review, then a bare run to apply) for agents and other callers without a terminal. Because the commands resolve to the interpreter that ran the check, a consumer that pins octowrap as a pre-commit `repo:` at a frozen `rev` gets commands pointing into pre-commit's cached hook environment, so the interactive fix runs against the exact pinned version without a second install in the developer's venv. Paths containing whitespace are double-quoted, and when the interpreter path had to be quoted each label notes that PowerShell users must prefix the command with `&`.

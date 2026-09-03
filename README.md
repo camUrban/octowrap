@@ -190,6 +190,77 @@ Use pragma comments to protect regions of a file from rewrapping, similar to `# 
 - `# octowrap: off` without a matching `on` disables rewrapping through end of file
 - Pragma lines themselves are always preserved as-is
 
+## Pre-commit Hook
+
+The recommended setup is the `octowrap-check` hook, which fails without modifying files so you can review each rewrap interactively before it lands. Add it to your `.pre-commit-config.yaml`:
+
+```yaml
+- repo: https://github.com/camUrban/octowrap
+  rev: v0.7.0
+  hooks:
+    - id: octowrap-check
+      # args: [-l, "79"]       # custom line length
+      # args: [--diff-only]    # only check comments on changed lines
+```
+
+Run `pre-commit autoupdate --freeze` to replace the tag with its commit SHA plus a `# frozen: v0.7.0` comment, the form Dependabot keeps current and the one that protects against a moved tag.
+
+When `octowrap-check` fails, octowrap prints the commands to fix the reported files, built from the interpreter that ran the check. Under pre-commit that is the copy in pre-commit's cached hook environment, so the interactive fix runs against the exact pinned `rev` without installing octowrap separately:
+
+```
+Run: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap -i src/a.py
+
+No TTY:
+  Review: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap --diff src/a.py
+
+  Apply: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap src/a.py
+```
+
+The interactive `Run` command needs a terminal. The `No TTY` pair reviews and then applies the same changes without prompting, for agents and other non-interactive callers. If the interpreter path contains whitespace it is double-quoted and each label notes that PowerShell users must prefix the command with `&`.
+
+Alternatively, the `octowrap` hook rewraps comments in place like a formatter, with no review step. It takes the same `args`:
+
+```yaml
+- repo: https://github.com/camUrban/octowrap
+  rev: v0.7.0
+  hooks:
+    - id: octowrap
+```
+
+## Continuous Integration
+
+Run the `octowrap-check` hook through pre-commit in CI so the check uses the exact `rev` pinned in `.pre-commit-config.yaml`:
+
+```yaml
+- name: Install pre-commit
+  run: pip install pre-commit
+
+- name: Check comment wrapping
+  run: pre-commit run --all-files octowrap-check
+```
+
+Without pre-commit, install octowrap directly and run it with `--check`:
+
+```yaml
+- name: Install octowrap
+  run: pip install octowrap
+
+- name: Check comment wrapping
+  run: octowrap --check .
+```
+
+To only enforce wrapping on comments changed in the PR, add `--diff-only --diff-base origin/main` (as hook `args`, or as flags in the direct form). A full git history is required so that `origin/main` is available for comparison, so check out with `fetch-depth: 0`.
+
+## Exit Codes
+
+| Code | Meaning                                                                      |
+|------|------------------------------------------------------------------------------|
+| 0    | Success (no changes needed, or changes applied)                              |
+| 1    | `--check` mode: files would be reformatted                                   |
+| 2    | Error processing one or more files (e.g., encoding error, permission denied) |
+
+Errors are printed to stderr. This behavior matches ruff.
+
 ## Incremental Adoption
 
 Use `--diff-only` to only process comment blocks that overlap with lines changed in git. This lets teams adopt octowrap gradually without reformatting the entire codebase in one go:
@@ -198,7 +269,7 @@ Use `--diff-only` to only process comment blocks that overlap with lines changed
 # Only rewrap comments on lines you've changed vs HEAD
 octowrap --diff-only .
 
-# Only rewrap comments changed relative to main (useful in CI)
+# Only rewrap comments changed relative to main
 octowrap --diff-only --diff-base main --check .
 
 # Preview what would change
@@ -209,28 +280,6 @@ octowrap --diff-only --diff .
 
 Comment blocks are processed at the block level: if any line in a comment block overlaps with a changed line, the entire block is rewrapped. This is safe because comment blocks are syntactically independent.
 
-### Pre-commit with `--diff-only`
-
-The most common use case is adding octowrap to pre-commit so it only enforces wrapping on comments you're already changing:
-
-```yaml
-- repo: https://github.com/camUrban/octowrap
-  rev: v0.6.2
-  hooks:
-    - id: octowrap
-      args: [--diff-only]
-```
-
-Or in check-only mode (fail without modifying):
-
-```yaml
-- repo: https://github.com/camUrban/octowrap
-  rev: v0.6.2
-  hooks:
-    - id: octowrap
-      args: [--diff-only, --check]
-```
-
 Both `diff-only` and `diff-base` can also be set in `pyproject.toml`:
 
 ```toml
@@ -238,6 +287,8 @@ Both `diff-only` and `diff-base` can also be set in `pyproject.toml`:
 diff-only = true
 diff-base = "main"
 ```
+
+In pre-commit and CI, pass `--diff-only` through the hook's `args` as shown in [Pre-commit Hook](#pre-commit-hook) and [Continuous Integration](#continuous-integration).
 
 Note: `--diff-only` requires a git repository and cannot be used with stdin mode (`-`).
 
@@ -252,71 +303,6 @@ Settings -> Tools -> File Watchers -> Add:
 - **Arguments:** `$FilePath$`
 - **Output paths to refresh:** `$FilePath$`
 - **Working directory:** `$ProjectFileDir$`
-
-## Pre-commit Hook
-
-Add octowrap to your `.pre-commit-config.yaml`:
-
-```yaml
-- repo: https://github.com/camUrban/octowrap
-  rev: v0.6.2
-  hooks:
-    - id: octowrap
-      # args: [-l, "79"]       # custom line length
-      # args: [--check]        # fail without modifying (useful for CI)
-      # args: [--diff-only]    # only process comments on changed lines
-```
-
-To fail without modifying files, use the `octowrap-check` hook id instead of passing `--check` through `args`. When it fails, octowrap prints the commands to fix the reported files, built from the interpreter that ran the check. Under pre-commit that is the copy in pre-commit's cached hook environment, so the interactive fix runs against the exact pinned `rev` without installing octowrap separately:
-
-```
-Run: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap -i src/a.py
-
-No TTY:
-  Review: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap --diff src/a.py
-
-  Apply: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap src/a.py
-```
-
-The interactive `Run` command needs a terminal. The `No TTY` pair reviews and then applies the same changes without prompting, for agents and other non-interactive callers. If the interpreter path contains whitespace it is double-quoted and each label notes that PowerShell users must prefix the command with `&`.
-
-## Exit Codes
-
-| Code | Meaning                                                                      |
-|------|------------------------------------------------------------------------------|
-| 0    | Success (no changes needed, or changes applied)                              |
-| 1    | `--check` mode: files would be reformatted                                   |
-| 2    | Error processing one or more files (e.g., encoding error, permission denied) |
-
-Errors are printed to stderr. This behavior matches ruff.
-
-## GitHub Actions
-
-Use `--check` in CI to fail if any comments would be rewrapped:
-
-```yaml
-- name: Install octowrap
-  run: pip install octowrap
-
-- name: Check comment wrapping
-  run: octowrap --check .
-```
-
-### Incremental CI check
-
-To only enforce wrapping on comments changed in the PR (for gradual adoption), use `--diff-only --diff-base origin/main`. A full git history is required so that `origin/main` is available for comparison:
-
-```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-
-- name: Install octowrap
-  run: pip install octowrap
-
-- name: Check changed comments
-  run: octowrap --diff-only --diff-base origin/main --check .
-```
 
 ## Configuration
 

@@ -91,10 +91,10 @@ jobs:
       - name: docformatter
         run: uv run pre-commit run --all-files docformatter
 
-      # octowrap is a local (language: system) hook, so its version is fixed by
-      # the install above either way; run its check directly.
+      # octowrap-check is a local (language: system) hook, so it runs the
+      # editable install from the uv sync above rather than a frozen rev.
       - name: octowrap check
-        run: uv run octowrap --check .
+        run: uv run pre-commit run --all-files octowrap-check
 
       - name: ty
         run: uv run pre-commit run --all-files ty
