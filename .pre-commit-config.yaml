@@ -28,13 +28,6 @@ repos:
         name: fixer    docformatter
         additional_dependencies: [tomli]
         args: [--in-place, --config, ./pyproject.toml]
-  - repo: local
-    hooks:
-      - id: octowrap
-        name: fixer    octowrap
-        entry: octowrap
-        language: system
-        types: [python]
   # Validators: read-only, run against the final state.
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
@@ -83,6 +76,14 @@ repos:
         name: checker  zizmor
   - repo: local
     hooks:
+      # Dogfood the recommended consumer setup against the working tree: a local
+      # language: system hook runs the editable install, and --check exercises the
+      # fix hint on every failing commit.
+      - id: octowrap-check
+        name: checker  octowrap-check
+        entry: octowrap --check
+        language: system
+        types: [python]
       - id: ascii-only
         name: checker  ascii-only
         entry: python scripts/check_ascii_only.py
