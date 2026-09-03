@@ -479,6 +479,72 @@ class TestCheckMode:
             main()
         assert f.read_bytes() == WRAPPABLE_CONTENT
 
+    def test_check_dirty_prints_fix_hint(self, tmp_path, monkeypatch, capsys):
+        """--check with dirty files prints run/review/apply commands built from
+        sys.executable and listing only the dirty files."""
+        dirty = tmp_path / "a.py"
+        dirty.write_bytes(WRAPPABLE_CONTENT)
+        clean = tmp_path / "b.py"
+        clean.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.executable", "/opt/venv/bin/python")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(dirty), str(clean)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        out = capsys.readouterr().out
+        assert out.endswith(
+            "\n1 file(s) would be reformatted.\n"
+            f"\nRun: /opt/venv/bin/python -m octowrap -i {dirty}\n"
+            "\n"
+            "No TTY:\n"
+            f"  Review: /opt/venv/bin/python -m octowrap --diff {dirty}\n"
+            "\n"
+            f"  Apply: /opt/venv/bin/python -m octowrap {dirty}\n"
+            "\n"
+        )
+        assert str(clean) not in out
+
+    def test_check_clean_prints_no_fix_hint(self, tmp_path, monkeypatch, capsys):
+        """--check with clean files prints no fix hint."""
+        f = tmp_path / "a.py"
+        f.write_bytes(b"x = 1\n")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
+        main()
+        out = capsys.readouterr().out
+        assert "Run" not in out
+        assert "No TTY:" not in out
+
+    def test_check_fix_hint_quotes_whitespace_paths(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """An interpreter path with whitespace is double-quoted and each label warns
+        PowerShell users to prefix the command with &."""
+        f = tmp_path / "a.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.executable", r"C:\Users\Cam Urban\py\python.exe")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        out = capsys.readouterr().out
+        quoted = r'"C:\Users\Cam Urban\py\python.exe"'
+        assert f"Run (in PowerShell, prefix with &): {quoted} -m octowrap -i" in out
+        assert f"Review (in PowerShell, prefix with &): {quoted} -m octowrap" in out
+        assert f"Apply (in PowerShell, prefix with &): {quoted} -m octowrap" in out
+
+    def test_check_fix_hint_quotes_whitespace_files(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A checked file path with whitespace is double-quoted without triggering the
+        PowerShell note, which only concerns the interpreter path."""
+        f = tmp_path / "my file.py"
+        f.write_bytes(WRAPPABLE_CONTENT)
+        monkeypatch.setattr("sys.executable", "/opt/venv/bin/python")
+        monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
+        with pytest.raises(SystemExit, match="1"):
+            main()
+        out = capsys.readouterr().out
+        assert f'Run: /opt/venv/bin/python -m octowrap -i "{f}"\n' in out
+        assert "PowerShell" not in out
+
 
 class TestDefaultExcludes:
     """Tests for default directory exclusion."""
