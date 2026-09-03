@@ -6,6 +6,7 @@
 * Disclosure is strongly encouraged for commits, issue descriptions, and PRDs. Disclosure should not be included for review comments or security reports.
 * This policy covers generative AI and LLM tools only. Deterministic automation using tools such as Dependabot and GitHub Actions is out of scope. The disclosure section notes how their trailers are handled.
 * These rules apply to all contributors, including the maintainer(s).
+* These rules are effective for commits merged after [fa15fdf4a](https://github.com/camUrban/octowrap/commit/fa15fdf4a4da79bb5d9a04e725bd1fa27efca10e). Earlier history is unchanged.
 
 ## Principles
 
