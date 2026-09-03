@@ -267,6 +267,19 @@ Add octowrap to your `.pre-commit-config.yaml`:
       # args: [--diff-only]    # only process comments on changed lines
 ```
 
+To fail without modifying files, use the `octowrap-check` hook id instead of passing `--check` through `args`. When it fails, octowrap prints the commands to fix the reported files, built from the interpreter that ran the check. Under pre-commit that is the copy in pre-commit's cached hook environment, so the interactive fix runs against the exact pinned `rev` without installing octowrap separately:
+
+```
+Run: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap -i src/a.py
+
+No TTY:
+  Review: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap --diff src/a.py
+
+  Apply: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap src/a.py
+```
+
+The interactive `Run` command needs a terminal. The `No TTY` pair reviews and then applies the same changes without prompting, for agents and other non-interactive callers. If the interpreter path contains whitespace it is double-quoted and each label notes that PowerShell users must prefix the command with `&`.
+
 ## Exit Codes
 
 | Code | Meaning                                                                      |

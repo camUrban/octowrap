@@ -4,3 +4,9 @@
   entry: octowrap
   language: python
   types: [python]
+- id: octowrap-check
+  name: octowrap-check
+  description: Fail if any Python # comments would be rewrapped, without modifying them
+  entry: octowrap --check
+  language: python
+  types: [python]

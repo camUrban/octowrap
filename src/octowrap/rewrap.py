@@ -2040,6 +2040,43 @@ def process_file(
     return changed, new_content
 
 
+def _check_fix_hint(changed_files: list[Path]) -> str:
+    """Builds the fix hint printed when ``--check`` finds files to reformat.
+
+    Every command is built from ``sys.executable`` so it resolves to the exact octowrap
+    that ran the check. Under pre-commit that is the copy in pre-commit's cached hook
+    environment, which lets the interactive fix run against the pinned version without a
+    second install in the developer's venv. The interactive command needs a TTY, so a
+    two-step review-then-apply path is printed for callers without one.
+
+    Paths containing whitespace are double-quoted. PowerShell needs a leading ``&`` to
+    invoke a quoted executable, so each label notes that when the interpreter path had
+    to be quoted.
+
+    :param changed_files: The files that ``--check`` reported would be reformatted, in
+        the order they were checked.
+    :return: The hint text, including its leading and trailing blank lines.
+    """
+    python = sys.executable or "python"
+    quoted_python = any(c.isspace() for c in python)
+    if quoted_python:
+        python = f'"{python}"'
+    files = " ".join(
+        f'"{fp}"' if any(c.isspace() for c in str(fp)) else str(fp)
+        for fp in changed_files
+    )
+    note = " (in PowerShell, prefix with &)" if quoted_python else ""
+    return (
+        f"\nRun{note}: {python} -m octowrap -i {files}\n"
+        "\n"
+        "No TTY:\n"
+        f"  Review{note}: {python} -m octowrap --diff {files}\n"
+        "\n"
+        f"  Apply{note}: {python} -m octowrap {files}\n"
+        "\n"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Rewrap # block comments to a specified line width."
@@ -2339,6 +2376,7 @@ def main():
         return all_changed_lines.get(rel_path, set())
 
     changed_count = 0
+    changed_files: list[Path] = []
     error_count = 0
     interactive_state: dict = _init_session_state(None)
 
@@ -2386,6 +2424,7 @@ def main():
             continue
         if result["changed"]:
             changed_count += 1
+            changed_files.append(filepath)
             if args.diff:
                 diff = difflib.unified_diff(
                     result["original"].splitlines(keepends=True),
@@ -2405,6 +2444,7 @@ def main():
     if error_count > 0:
         raise SystemExit(2)
     if args.check and changed_count > 0:
+        print(_check_fix_hint(changed_files), end="")
         raise SystemExit(1)
 
 
