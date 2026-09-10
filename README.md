@@ -92,9 +92,11 @@ When a code line with an inline comment exceeds the line length, octowrap extrac
 
 Before:
 
+<!-- fmt: off -->
 ```python
 x = some_really_long_function_call(arg1, arg2)  # This comment pushes the line way past the limit
 ```
+<!-- fmt: on -->
 
 After (`--line-length 88`):
 
