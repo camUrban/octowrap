@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-09-15
+
+### Fixed
+- The `octowrap-check` pre-commit hook no longer prints one summary per batch of files. Pre-commit partitions the file list into chunks and runs the hook once per chunk in parallel, so a clean repo printed a `0 file(s) would be reformatted.` line for every chunk, and a repo with failures in more than one chunk printed a separate fix hint per chunk, each naming only that chunk's files. The hook is now marked `require_serial` so a single invocation sees every file and prints one summary and one fix hint listing all failing files, and `--check` no longer prints the summary line when no file would change, so a clean run is silent under pre-commit like black and ruff.
+
 ## 0.7.0 - 2026-09-03
 
 ### Added

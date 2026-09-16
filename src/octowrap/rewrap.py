@@ -2439,7 +2439,8 @@ def main():
                 print(f"Reformatted: {filepath}")
 
     action = "would be reformatted" if args.dry_run else "reformatted"
-    print(f"\n{changed_count} file(s) {action}.")
+    if not (args.check and changed_count == 0):
+        print(f"\n{changed_count} file(s) {action}.")
 
     if error_count > 0:
         raise SystemExit(2)
