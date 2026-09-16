@@ -198,14 +198,14 @@ The recommended setup is the `octowrap-check` hook, which fails without modifyin
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.7.0
+  rev: v0.7.1
   hooks:
     - id: octowrap-check
       # args: [-l, "79"]       # custom line length
       # args: [--diff-only]    # only check comments on changed lines
 ```
 
-Run `pre-commit autoupdate --freeze` to replace the tag with its commit SHA plus a `# frozen: v0.7.0` comment, the form Dependabot keeps current and the one that protects against a moved tag.
+Run `pre-commit autoupdate --freeze` to replace the tag with its commit SHA plus a `# frozen: v0.7.1` comment, the form Dependabot keeps current and the one that protects against a moved tag.
 
 When `octowrap-check` fails, octowrap prints the commands to fix the reported files, built from the interpreter that ran the check. Under pre-commit that is the copy in pre-commit's cached hook environment, so the interactive fix runs against the exact pinned `rev` without installing octowrap separately:
 
@@ -224,7 +224,7 @@ Alternatively, the `octowrap` hook rewraps comments in place like a formatter, w
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.7.0
+  rev: v0.7.1
   hooks:
     - id: octowrap
 ```
