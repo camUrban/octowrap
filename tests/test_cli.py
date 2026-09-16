@@ -443,13 +443,13 @@ class TestCheckMode:
     """Tests for the --check flag."""
 
     def test_check_exits_zero_when_clean(self, tmp_path, monkeypatch, capsys):
-        """No changes needed -> exit 0."""
+        """No changes needed -> exit 0 and print nothing."""
         f = tmp_path / "a.py"
         f.write_bytes(b"x = 1\n")
         monkeypatch.setattr("sys.argv", ["octowrap", "--check", str(f)])
         main()  # should not raise
         out = capsys.readouterr().out
-        assert "0 file(s) would be reformatted." in out
+        assert out == ""
 
     def test_check_exits_one_when_dirty(self, tmp_path, monkeypatch, capsys):
         """Changes needed -> exit 1."""
@@ -1262,14 +1262,15 @@ class TestDiffOnly:
         assert calls == ["develop"]
 
     def test_diff_only_check_clean(self, tmp_path, monkeypatch, capsys):
-        """--diff-only --check exits 0 when no changed blocks need rewrapping."""
+        """--diff-only --check exits 0 and prints nothing when no changed blocks need
+        rewrapping."""
         f = tmp_path / "a.py"
         f.write_bytes(TWO_BLOCK_CONTENT)
         self._mock_diff(monkeypatch, tmp_path, {})
         monkeypatch.setattr("sys.argv", ["octowrap", "--diff-only", "--check", str(f)])
         main()  # should not raise
         out = capsys.readouterr().out
-        assert "0 file(s) would be reformatted." in out
+        assert out == ""
 
     def test_diff_only_check_dirty(self, tmp_path, monkeypatch, capsys):
         """--diff-only --check exits 1 when a changed block needs rewrapping."""
