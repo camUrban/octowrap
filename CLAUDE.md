@@ -71,7 +71,7 @@ Core logic lives in `src/octowrap/rewrap.py`. `config.py` handles `pyproject.tom
 ## Tooling
 
 - **Python 3.11+**, no runtime dependencies (stdlib only, uses `tomllib` for config)
-- **uv** for package management, with `.python-version` pinning dev to 3.14
+- **uv** for package management, with `.python-version` pinning dev to 3.15
 - **ruff** for linting, formatting, and import sorting
 - **codespell** for spell checking
 - **docformatter** for docstring formatting (config in `[tool.docformatter]` in pyproject.toml)
