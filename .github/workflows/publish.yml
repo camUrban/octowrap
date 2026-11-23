@@ -28,7 +28,7 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           # noinspection UndefinedParamsPresent
-          python-version: "3.14"
+          python-version: "3.15"
           # Defuse zizmor's cache-poisoning finding: a poisoned cache between
           # this step and the PyPI upload could substitute malicious artifacts.
           enable-cache: false

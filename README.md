@@ -38,10 +38,10 @@ Rewrap Python `#` comments to a line length you choose without touching commente
 ```bash
 git clone https://github.com/camUrban/octowrap.git
 cd octowrap
-uv sync            # uses .python-version (3.14) and installs runtime + dev group
+uv sync            # uses .python-version (3.15) and installs runtime + dev group
 ```
 
-> **Note:** The dev environment is pinned to Python 3.14 via `.python-version`. The runtime itself supports 3.11+.
+> **Note:** The dev environment is pinned to Python 3.15 via `.python-version`. The runtime itself supports 3.11+.
 
 ## Usage
 
@@ -198,24 +198,24 @@ The recommended setup is the `octowrap-check` hook, which fails without modifyin
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.7.1
+  rev: v0.8.0
   hooks:
     - id: octowrap-check
       # args: [-l, "79"]       # custom line length
       # args: [--diff-only]    # only check comments on changed lines
 ```
 
-Run `pre-commit autoupdate --freeze` to replace the tag with its commit SHA plus a `# frozen: v0.7.1` comment, the form Dependabot keeps current and the one that protects against a moved tag.
+Run `pre-commit autoupdate --freeze` to replace the tag with its commit SHA plus a `# frozen: v0.8.0` comment, the form Dependabot keeps current and the one that protects against a moved tag.
 
 When `octowrap-check` fails, octowrap prints the commands to fix the reported files, built from the interpreter that ran the check. Under pre-commit that is the copy in pre-commit's cached hook environment, so the interactive fix runs against the exact pinned `rev` without installing octowrap separately:
 
 ```
-Run: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap -i src/a.py
+Run: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.15/bin/python -m octowrap -i src/a.py
 
 No TTY:
-  Review: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap --diff src/a.py
+  Review: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.15/bin/python -m octowrap --diff src/a.py
 
-  Apply: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.14/bin/python -m octowrap src/a.py
+  Apply: /home/you/.cache/pre-commit/repoXXXX/py_env-python3.15/bin/python -m octowrap src/a.py
 ```
 
 The interactive `Run` command needs a terminal. The `No TTY` pair reviews and then applies the same changes without prompting, for agents and other non-interactive callers. If the interpreter path contains whitespace it is double-quoted and each label notes that PowerShell users must prefix the command with `&`.
@@ -224,7 +224,7 @@ Alternatively, the `octowrap` hook rewraps comments in place like a formatter, w
 
 ```yaml
 - repo: https://github.com/camUrban/octowrap
-  rev: v0.7.1
+  rev: v0.8.0
   hooks:
     - id: octowrap
 ```

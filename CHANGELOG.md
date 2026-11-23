@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 - 2026-11-23
+
+### Added
+- Python 3.15 support: the `Programming Language :: Python :: 3.15` classifier is declared and 3.15 is part of the CI test matrix.
+
+### Changed
+- `.python-version` pins the dev environment to Python 3.15.
+
 ## 0.7.1 - 2026-09-15
 
 ### Fixed
